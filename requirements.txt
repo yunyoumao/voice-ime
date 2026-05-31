@@ -1,0 +1,20 @@
+# ===== 核心（阶段 1 必需）=====
+sounddevice>=0.4.6      # 麦克风录音（PortAudio 绑定）
+numpy>=1.26             # 音频缓冲处理
+pynput>=1.7.6           # 全局热键 + 模拟键盘（Mac 需辅助功能/输入监控授权）
+PyYAML>=6.0             # 配置文件
+pyperclip>=1.8          # 剪贴板上屏
+
+# ===== 本地引擎（阶段 1）=====
+sherpa-onnx>=1.10       # 本地 SenseVoice + Silero VAD（离线、零成本）
+
+# ===== 云引擎（阶段 2）=====
+websockets>=12.0        # Soniox / 火山 等通用 WebSocket 流式
+dashscope>=1.20         # 阿里百炼 qwen3-asr / Fun-ASR
+
+# ===== 体验层（阶段 3）=====
+pystray>=0.19           # 系统托盘
+Pillow>=10.0            # 托盘图标绘制
+
+# 注：火山豆包流式 ASR 用 websockets 自行实现鉴权（appid+token），
+#     如需官方 SDK 可在阶段 2 再加 volcengine。

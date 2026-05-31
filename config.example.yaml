@@ -1,0 +1,57 @@
+# ============================================================
+# 复制本文件为 config.yaml 后按需填写。
+# config.yaml 含 API key，已被 .gitignore 忽略，不会进版本库。
+# ============================================================
+
+# 当前使用的识别引擎：local | soniox | aliyun | volcano
+# - local   本地 SenseVoice：零成本、离线、隐私最好（整段识别，说完一句秒出）
+# - soniox  逐字实时、中英日混合最强、最便宜（需 key，国内或需梯子）
+# - aliyun  阿里百炼：国内稳定合规（需 DashScope key）
+# - volcano 火山豆包：国内一流中文（需 appid+token）
+engine: local
+
+# 全局热键（按住说话 push-to-talk，松开上屏）
+# 默认 Cmd+Option（macOS 最稳，不与系统快捷键冲突）
+# 备选单键 "<f8>"（若无效，到「系统设置→键盘」开启"将 F1–F12 作为标准功能键"）
+# ⚠️ 勿用 "<ctrl>+<space>" / "<cmd>+<space>"：被 macOS 输入法切换占用
+# ⚠️ 修饰键用通用名 <cmd>/<alt>/<ctrl>/<shift>，勿用 <alt_r> 等左右键（匹配不可靠）
+hotkey: "<cmd>+<alt>"
+
+# 录音参数（所有引擎统一 16k / 单声道 / PCM16）
+audio:
+  samplerate: 16000
+  channels: 1
+  blocksize: 1600        # 每帧采样数，1600 = 100ms @16kHz
+
+# 上屏方式
+output:
+  mode: paste            # paste(剪贴板粘贴，推荐) | type(逐字模拟键盘)
+  restore_clipboard: true   # 粘贴后恢复原剪贴板内容
+
+# 实时浮窗（阶段 3 启用）
+overlay:
+  enabled: true
+
+# ---------------- 各引擎独立配置 ----------------
+engines:
+  local:
+    model_dir: "models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09"
+    vad_model: "models/silero_vad.onnx"
+    num_threads: 2
+    language: "auto"     # auto | zh | en | ja | ko | yue
+
+  soniox:
+    api_key: ""                       # 从 https://console.soniox.com 获取
+    model: "stt-rt-preview"           # 实时模型名，以官方文档为准
+    # Soniox 单模型自动多语言混合，无需指定语言
+
+  aliyun:
+    api_key: ""                       # DashScope API Key（DASHSCOPE_API_KEY）
+    model: "qwen3-asr-flash-realtime" # 或 fun-asr-realtime
+    region: "beijing"                 # beijing | singapore
+    language_hints: ["zh", "en", "ja"]
+
+  volcano:
+    app_id: ""
+    access_token: ""
+    cluster: "volcengine_streaming_common"   # 以官方控制台为准

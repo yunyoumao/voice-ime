@@ -1,0 +1,51 @@
+"""上屏：把识别结果送到当前光标处。
+
+默认 paste 模式：暂存原剪贴板 → 写入结果 → 模拟 Cmd+V(Mac)/Ctrl+V(Win)
+→ 恢复原剪贴板。比逐字模拟快，且对中日文输入法无冲突。
+type 模式：直接用 pynput 逐字键入（个别 App 兼容性更好，但慢）。
+"""
+from __future__ import annotations
+
+import sys
+import time
+
+import pyperclip
+from pynput.keyboard import Controller, Key
+
+
+class OutputController:
+    def __init__(self, cfg: dict) -> None:
+        o = cfg.get("output", {})
+        self.mode = o.get("mode", "paste")
+        self.restore = bool(o.get("restore_clipboard", True))
+        self._kb = Controller()
+        self._is_mac = sys.platform == "darwin"
+
+    def put(self, text: str) -> None:
+        if not text:
+            return
+        if self.mode == "type":
+            self._kb.type(text)
+            return
+        self._paste_text(text)
+
+    def _paste_text(self, text: str) -> None:
+        old = None
+        if self.restore:
+            try:
+                old = pyperclip.paste()
+            except Exception:
+                old = None
+        pyperclip.copy(text)
+        time.sleep(0.02)  # 等剪贴板写入生效
+        self._send_paste()
+        if self.restore and old is not None:
+            time.sleep(0.05)
+            pyperclip.copy(old)
+
+    def _send_paste(self) -> None:
+        mod = Key.cmd if self._is_mac else Key.ctrl
+        self._kb.press(mod)
+        self._kb.press("v")
+        self._kb.release("v")
+        self._kb.release(mod)
