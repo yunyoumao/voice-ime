@@ -32,6 +32,27 @@ output:
 overlay:
   enabled: true
 
+# ---------------- 处理层：语音 → AI 工作流 ----------------
+pipeline:
+  default_mode: polish       # raw(直通) | polish(润色)  ［summary/translate/command 后续上线］
+  prefix_routing: true       # 说"原文…"走直通；说"润色…"走润色；否则用 default_mode
+  llm:
+    provider: glm-cli        # glm-cli(复用你的 ask_glm.py，推荐) | openai
+    timeout: 60
+    glm_cli:
+      python: "python3"   # 系统 Python（不是本项目 .venv）
+      script: "~/.claude/skills/glm-provider/ask_glm.py"
+      model: "glm-4.7"
+    openai:                  # provider=openai 时用（直连智谱需账户有余额；也可填其他厂商）
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      api_key_env: "ZHIPU_API_KEY"
+      model: "glm-4.5-air"
+
+# 各模式输出去向：type(上屏)  ［file(写.md)/clipboard 后续上线］
+sinks:
+  raw: type
+  polish: type
+
 # ---------------- 各引擎独立配置 ----------------
 engines:
   local:

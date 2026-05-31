@@ -15,21 +15,39 @@ from desktop.audio import AudioRecorder
 from desktop.config import load_config
 from desktop.hotkey import HotkeyListener
 from desktop.output import OutputController
+from pipeline import build_pipeline
+from pipeline.base import Result
+from sink import build_sinks
 
 
 async def run() -> None:
     cfg = load_config()
     loop = asyncio.get_running_loop()
     out = OutputController(cfg)
+    pipeline = build_pipeline(cfg)
+    sinks = build_sinks(cfg, out)
 
     def on_partial(text: str) -> None:
         sys.stdout.write("\r… " + text)
         sys.stdout.flush()
 
+    async def handle_final(text: str) -> None:
+        try:
+            result = await pipeline.run(text)
+        except Exception as exc:  # 处理失败 → 回退原文上屏，绝不吞字
+            sys.stdout.write(f"   [处理失败，回退原文] {exc}\n")
+            sys.stdout.flush()
+            result = Result(text=text, mode="raw", sink="type")
+        if result.mode != "raw":
+            sys.stdout.write(f"   → [{result.mode}] {result.text}\n")
+            sys.stdout.flush()
+        sink = sinks.get(result.sink) or sinks["type"]
+        await sink.emit(result)
+
     def on_final(text: str) -> None:
         sys.stdout.write("\r✓ " + text + "\n")
         sys.stdout.flush()
-        out.put(text)
+        asyncio.run_coroutine_threadsafe(handle_final(text), loop)
 
     engine = create_engine(cfg, on_partial=on_partial, on_final=on_final)
 
