@@ -22,7 +22,11 @@ class LLMClient:
     def __init__(self, cfg: dict) -> None:
         llm = (cfg.get("pipeline") or {}).get("llm") or {}
         self.provider = llm.get("provider", "glm-cli")
-        self.timeout = int(llm.get("timeout", 60))
+        self.timeout = int(llm.get("timeout", 30))
+        # 并发闸：智谱按 key 限并发，多请求齐发会 429→退避重试→卡 5-8s 甚至失败。
+        # 默认串行(1)从源头避免；连说多句排队处理(每句~1.2s)。配额高可在 config 调大。
+        self.max_concurrency = max(1, int(llm.get("max_concurrency", 1)))
+        self._sem: asyncio.Semaphore | None = None   # 懒建(绑到运行中的事件循环)
 
         gc = llm.get("glm_cli") or {}
         self.glm_python = os.path.expanduser(gc.get("python", "python3"))
@@ -35,7 +39,10 @@ class LLMClient:
         self.api_key = oc.get("api_key") or os.environ.get(oc.get("api_key_env", "ZHIPU_API_KEY"), "")
 
     async def chat(self, system: str, user: str) -> str:
-        return await asyncio.to_thread(self._chat_sync, system, user)
+        if self._sem is None:                        # 首次调用时在运行中的循环里建信号量
+            self._sem = asyncio.Semaphore(self.max_concurrency)
+        async with self._sem:                        # 串行(默认)：避免并发触发智谱 429
+            return await asyncio.to_thread(self._chat_sync, system, user)
 
     def _chat_sync(self, system: str, user: str) -> str:
         if self.provider == "openai":

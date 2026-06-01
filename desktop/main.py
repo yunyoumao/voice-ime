@@ -84,7 +84,7 @@ async def run() -> None:
     async def _final_worker() -> None:
         # 并发处理、按序上屏：多句同时调 GLM（并发上限 4），但严格按识别顺序上屏，
         # 兼顾速度与顺序——连说多句不再「一句等一句」地排队（修复"润色超级慢"）。
-        sem = asyncio.Semaphore(4)   # 实测并发5仍正常(无429)，故放回4：长段更快；卡顿其实是"无结果卡处理中"已修
+        sem = asyncio.Semaphore(4)   # 任务级在途上限；GLM 真实并发由 LLMClient.max_concurrency 串行管控(避免智谱429)
         ordered: asyncio.Queue = asyncio.Queue()
 
         async def _compute(text, fmode):
