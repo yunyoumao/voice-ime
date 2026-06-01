@@ -56,7 +56,7 @@ async def run() -> None:
         sys.stdout.write("\r… " + text)
         sys.stdout.flush()
 
-    finals: asyncio.Queue = asyncio.Queue()   # 识别结果按序处理队列（杜绝并发乱序）
+    finals: asyncio.Queue = asyncio.Queue()   # 处理通道：("seg",文本)累积本段片段 / ("flush",模式)停录后整段发一次
     proc_avg = {"s": 1.3}                      # 处理耗时滚动均值(秒)：驱动「处理中」进度条的估计
 
     async def _compute_result(text: str, fmode):
@@ -82,45 +82,35 @@ async def run() -> None:
         await sink.emit(result)
 
     async def _final_worker() -> None:
-        # 并发处理、按序上屏：多句同时调 GLM（并发上限 4），但严格按识别顺序上屏，
-        # 兼顾速度与顺序——连说多句不再「一句等一句」地排队（修复"润色超级慢"）。
-        sem = asyncio.Semaphore(4)   # 任务级在途上限；GLM 真实并发由 LLMClient.max_concurrency 串行管控(避免智谱429)
-        ordered: asyncio.Queue = asyncio.Queue()
-
-        async def _compute(text, fmode):
-            async with sem:
-                return await _compute_result(text, fmode)
-
-        async def _launcher() -> None:
-            while True:
-                try:
-                    text, fmode = await finals.get()
-                    inflight["n"] += 1
-                    ordered.put_nowait(asyncio.ensure_future(_compute(text, fmode)))
-                    finals.task_done()
-                except Exception as exc:               # 防 launcher 崩掉→后续识别全卡(Codex 审查)
-                    sys.stdout.write(f"   [launcher 异常] {exc}\n")
-                    sys.stdout.flush()
-
-        async def _emitter() -> None:
-            while True:
-                try:
-                    task = await ordered.get()
-                    try:
-                        await _emit_result(await task)   # 按入队顺序逐个等待 → 上屏严格保序
-                    except Exception as exc:
-                        sys.stdout.write(f"   [处理异常] {exc}\n")
-                        sys.stdout.flush()
-                    finally:
-                        ordered.task_done()
-                        inflight["n"] = max(0, inflight["n"] - 1)
-                    if finals.empty() and inflight["n"] == 0 and not rec["on"]:
-                        set_status("done")  # 全部处理完且已停录 → 进度跳满 100% 后收起
-                except Exception as exc:                 # emitter 永不退出(Codex 审查: gather 吞异常会卡死)
-                    sys.stdout.write(f"   [emitter 异常] {exc}\n")
-                    sys.stdout.flush()
-
-        await asyncio.gather(_launcher(), _emitter())
+        # 整段聚合：识别片段(seg)累积到 buf，停录后收到 flush → 整段拼成一句发 GLM 一次。
+        # 一段一次调用：上下文完整(润色/翻译更连贯、总结才成立)，且零并发 → 不触发智谱限流。
+        buf: list[str] = []
+        while True:
+            kind, payload = await finals.get()            # 取消时抛 CancelledError 退出(不进 finally)
+            try:
+                if kind == "seg":
+                    if payload:
+                        buf.append(payload)
+                elif kind == "flush":                     # payload = 本段锁定模式(forced 快照)
+                    text = " ".join(s for s in buf if s).strip()
+                    buf.clear()
+                    if not text or payload is _CANCEL:    # 没识别出内容 / 取消 → 直接收起
+                        set_status("off")
+                    else:
+                        inflight["n"] += 1
+                        try:
+                            await _emit_result(await _compute_result(text, payload))
+                        except Exception as exc:
+                            sys.stdout.write(f"   [处理异常] {exc}\n")
+                            sys.stdout.flush()
+                        finally:
+                            inflight["n"] = max(0, inflight["n"] - 1)
+                        set_status("done")                # 处理完 → 进度跳满 100% 后收起
+            except Exception as exc:                       # worker 永不退出(吞异常会卡死后续)
+                sys.stdout.write(f"   [worker 异常] {exc}\n")
+                sys.stdout.flush()
+            finally:
+                finals.task_done()
 
     def _clear_hud_if_idle() -> None:
         # 兜底：这次没识别出任何内容(静音/麦没收到音频)时，没有结果触发 worker 收起浮窗 → 这里清，
@@ -137,8 +127,9 @@ async def run() -> None:
         last_final["text"], last_final["t"] = text, now
         sys.stdout.write("\r✓ 识别原文：" + text + "\n")
         sys.stdout.flush()
-        # 快照当前手势模式后入队，由单 worker 按序处理（防乱序）。on_final 在引擎线程 → threadsafe 入队。
-        loop.call_soon_threadsafe(finals.put_nowait, (text, forced["mode"]))
+        # 只累积本段片段(不立即发)；停录后由 STOP 投一个 flush，worker 整段拼一次发 GLM。
+        # on_final 可能在引擎线程 → threadsafe 入队，与 flush 保持 FIFO 顺序。
+        loop.call_soon_threadsafe(finals.put_nowait, ("seg", text))
 
     engine = create_engine(cfg, on_partial=on_partial, on_final=on_final)
 
@@ -320,7 +311,7 @@ async def run() -> None:
     print(f"✅ 就绪：引擎={cfg.get('engine')}　热键=[{cfg.get('hotkey')}]　模式={mode}")
     print(f"   {label}（预缓冲 {preroll_frames * frame_ms}ms 防吞字）。Ctrl+C 退出。\n")
 
-    worker_task = asyncio.create_task(_final_worker())   # 串行处理识别结果，严格保序
+    worker_task = asyncio.create_task(_final_worker())   # 累积识别片段，停录后整段拼一次发 GLM
     seg_frames = 0
     seg_peak = 0
     try:
@@ -350,6 +341,8 @@ async def run() -> None:
                     await asyncio.sleep(0.08)         # 等残留音频帧入队
                     await _drain_audio(engine, events)
                     await engine.stop()
+                    # 整段一次发：把本段所有识别片段拼成一句发 GLM(call_soon 排在所有 seg 之后→FIFO)。
+                    loop.call_soon(finals.put_nowait, ("flush", forced["mode"]))
                     loop.call_later(2.5, _clear_hud_if_idle)   # 没识别出内容时兜底收起"处理中"
                     preroll.clear()                   # 清空，避免话尾混入下次开头
                     level = int(seg_peak * 100 / 32768)
