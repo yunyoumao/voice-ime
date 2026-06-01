@@ -161,19 +161,20 @@ async def run() -> None:
         hotkey.add_binding(rcfg["talk_hotkey"], "toggle", on_start, on_stop,
                            suppress=bool(rcfg.get("suppress", True)))
 
-    settings_key = cfg.get("settings_hotkey", "<f9>")   # 拉起设置窗(独立 pywebview 子进程)
+    def open_settings() -> None:                # 拉起设置窗(独立 pywebview 子进程)；F9 与托盘共用
+        import os
+        import subprocess
+        try:
+            if getattr(sys, "frozen", False):       # 打包态：独立设置 exe
+                subprocess.Popen([os.path.join(os.path.dirname(sys.executable), "VoiceInputSettings.exe")])
+            else:                                    # 开发态：子进程跑 desktop.settings
+                subprocess.Popen([sys.executable, "-m", "desktop.settings"], cwd=cfg.get("_root", "."))
+        except Exception as exc:
+            print(f"⚠️ 打开设置失败：{exc}")
+
+    settings_key = cfg.get("settings_hotkey", "<f9>")
     if settings_key:
-        def _open_settings() -> None:
-            import os
-            import subprocess
-            try:
-                if getattr(sys, "frozen", False):       # 打包态：独立设置 exe
-                    subprocess.Popen([os.path.join(os.path.dirname(sys.executable), "VoiceInputSettings.exe")])
-                else:                                    # 开发态：子进程跑 desktop.settings
-                    subprocess.Popen([sys.executable, "-m", "desktop.settings"], cwd=cfg.get("_root", "."))
-            except Exception as exc:
-                print(f"⚠️ 打开设置失败：{exc}")
-        hotkey.add_binding(settings_key, "tap", _open_settings, None)
+        hotkey.add_binding(settings_key, "tap", open_settings, None)
     hotkey.start()
     try:
         audio.start()                   # 麦克风常开：消除每次按键的冷启动延迟（吞字主因）
@@ -326,11 +327,20 @@ async def run() -> None:
     print(f"   {label}（预缓冲 {preroll_frames * frame_ms}ms 防吞字）。Ctrl+C 退出。\n")
 
     worker_task = asyncio.create_task(_final_worker())   # 累积识别片段，停录后整段拼一次发 GLM
+    tray = tray_task = None
+    try:                                                  # 系统托盘(打开设置/退出)：阻塞的 run() 放后台线程
+        from desktop.tray import TrayIcon
+        tray = TrayIcon(loop, open_settings, lambda: events.put_nowait(("quit", None)))
+        tray_task = asyncio.create_task(asyncio.to_thread(tray.run))
+    except Exception as exc:
+        print(f"⚠️ 托盘启动失败(不影响使用)：{exc}")
     seg_frames = 0
     seg_peak = 0
     try:
         while True:
             kind, data = await events.get()
+            if kind == "quit":                            # 托盘"退出" → 跳出主循环走清理
+                break
             if kind == "audio":
                 preroll.append(data)                  # 始终滚动缓冲最近若干帧
                 if rec["on"]:
@@ -367,6 +377,10 @@ async def run() -> None:
         pass
     finally:
         hotkey.stop()
+        if tray is not None:
+            tray.stop()
+        if tray_task is not None:
+            tray_task.cancel()
         worker_task.cancel()
         if gesture is not None:
             gesture.stop()
