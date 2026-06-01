@@ -63,6 +63,7 @@ class LocalSenseVoiceASR(StreamingASR):
         vad_cfg.silero_vad.min_speech_duration = 0.10  # 允许更短促的字，避免漏掉单字
         vad_cfg.sample_rate = 16000
         self._vad = sherpa_onnx.VoiceActivityDetector(vad_cfg, buffer_size_in_seconds=30)
+        self._drain_task: asyncio.Future | None = None   # 后台识别任务：feed 不等它，长语音断句不卡录音
 
     @staticmethod
     def _find_model_file(model_dir: str) -> str:
@@ -112,18 +113,32 @@ class LocalSenseVoiceASR(StreamingASR):
 
     async def feed(self, pcm: bytes) -> None:
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        self._vad.accept_waveform(samples)
-        await self._drain()
+        self._vad.accept_waveform(samples)        # 快、同步：仅入 VAD 缓冲
+        self._kick_drain()                         # 识别放后台任务，feed 立即返回 → 不阻塞录音/浮窗
+
+    def _kick_drain(self) -> None:
+        # 同时只允许一个识别任务在跑；feed 不等它 → 长语音在停顿处断句识别时，录音与声波浮窗不再卡顿。
+        if self._drain_task is None or self._drain_task.done():
+            self._drain_task = asyncio.ensure_future(self._drain())
 
     async def stop(self) -> None:
-        self._vad.flush()
-        await self._drain()
+        self._vad.flush()                          # 把尾段推入队列
+        t = self._drain_task                       # 先等后台识别(若在跑)结束，避免并发 pop
+        if t is not None and not t.done():
+            try:
+                await t
+            except Exception:
+                pass
+        await self._drain()                        # 再把 flush 出来的尾段识别完(此刻无并发 feed)
 
     async def _drain(self) -> None:
         while not self._vad.empty():
             samples = self._vad.front.samples
             self._vad.pop()
-            text = await asyncio.to_thread(self._recognize, samples)
+            try:
+                text = await asyncio.to_thread(self._recognize, samples)
+            except Exception:
+                continue                           # 单段识别失败 → 跳过，不拖垮整个后台任务
             self.emit_final(text)
 
     def _recognize(self, samples) -> str:  # noqa: ANN001

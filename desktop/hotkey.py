@@ -3,6 +3,9 @@
 支持单键或组合键（如 "<alt_r>" 或 "<ctrl>+<space>"）：
 - hold（默认）：目标键全部按下触发 on_start，其后任一目标键松开触发 on_stop。
 - toggle：每"按齐一次"翻转一次——按一下开始录音，再按一下结束（适合说长段/总结）。
+- tap：每"按齐一次"触发一次 on_start（忽略松开）——给遥控器"点按"开/选轮盘的循环用。
+可选 suppress：在 Windows 低级键盘钩子里吞掉该键（如音量键），系统收不到 → 不改音量/不翻页，
+但回调照常派发，使带副作用的键也能当干净触发键。
 
 匹配按**虚拟键码 vk** 统一比对：pynput 解析热键时，有的名字给 Key 枚举、有的给
 KeyCode（如 <alt_r>→KeyCode(61)），实际按键事件又可能是另一种；统一取 vk 才能可靠
@@ -53,20 +56,27 @@ class HotkeyListener:
         # 并存时第二个常收不到事件，故所有热键(说话键 + 菜单键)都挂在同一个 listener。
         self._binds: list = []
         self._pressed: set = set()
+        self._suppress_vks: set = set()   # 需在系统层吞掉的 vk（如音量键，避免触发时误改音量）
         self._listener: keyboard.Listener | None = None
         self.add_binding(cfg.get("hotkey", "<alt_r>"),
-                         cfg.get("hotkey_mode", "hold"), on_start, on_stop)
+                         cfg.get("hotkey_mode", "hold"), on_start, on_stop,
+                         suppress=bool(cfg.get("hotkey_suppress", False)))
 
-    def add_binding(self, spec: str, mode, on_start, on_stop) -> None:  # noqa: ANN001
+    def add_binding(self, spec: str, mode, on_start, on_stop, suppress: bool = False) -> None:  # noqa: ANN001
         # 修饰键/功能键无需布局还原，构造时直接取 vk 即稳定
+        target = {_ident(k) for k in keyboard.HotKey.parse(spec)}
         self._binds.append({
-            "target": {_ident(k) for k in keyboard.HotKey.parse(spec)},
-            "mode": str(mode).lower(),        # hold | toggle
+            "target": target,
+            "mode": str(mode).lower(),        # hold | toggle | tap
             "on_start": on_start,
             "on_stop": on_stop,
             "active": False,
-            "combo_down": False,              # toggle 防长按重复
+            "combo_down": False,              # toggle/tap 防长按重复
         })
+        if suppress:                          # 把该键的 vk 并入"系统层吞掉"集合（如音量键）
+            for kind, val in target:
+                if kind == "vk" and isinstance(val, int):
+                    self._suppress_vks.add(val)
 
     def _handle_press(self, key) -> None:  # noqa: ANN001
         self._pressed.add(_ident(key, self._listener))
@@ -78,6 +88,10 @@ class HotkeyListener:
                     b["combo_down"] = True
                     b["active"] = not b["active"]
                     (b["on_start"] if b["active"] else b["on_stop"])()
+            elif b["mode"] == "tap":          # 每次"刚按齐"触发一次 on_start（忽略松开）
+                if not b["combo_down"]:
+                    b["combo_down"] = True
+                    b["on_start"]()
             elif not b["active"]:  # hold
                 b["active"] = True
                 b["on_start"]()
@@ -85,7 +99,7 @@ class HotkeyListener:
     def _handle_release(self, key) -> None:  # noqa: ANN001
         kid = _ident(key, self._listener)
         for b in self._binds:
-            if b["mode"] == "toggle":
+            if b["mode"] in ("toggle", "tap"):
                 if kid in b["target"]:
                     b["combo_down"] = False
             elif b["active"] and kid in b["target"]:  # hold
@@ -93,11 +107,21 @@ class HotkeyListener:
                 b["on_stop"]()
         self._pressed.discard(kid)
 
+    def _win32_filter(self, msg, data) -> None:  # noqa: ANN001
+        # Windows 低级键盘钩子回调：对被拦截键(如音量键)调 suppress_event()——系统收不到
+        # 该键 → 不改音量/不翻页；不返回 False，故 pynput 仍派发 on_press/on_release，触发照常。
+        try:
+            if getattr(data, "vkCode", None) in self._suppress_vks and self._listener is not None:
+                self._listener.suppress_event()
+        except Exception:
+            pass
+
     def start(self) -> None:
-        self._listener = keyboard.Listener(
-            on_press=self._handle_press,
-            on_release=self._handle_release,
-        )
+        import sys
+        kwargs = dict(on_press=self._handle_press, on_release=self._handle_release)
+        if sys.platform == "win32":          # 始终挂过滤器：拦截集合可在 start 后再增补(实时读取)
+            kwargs["win32_event_filter"] = self._win32_filter
+        self._listener = keyboard.Listener(**kwargs)
         self._listener.start()
 
     def stop(self) -> None:

@@ -15,6 +15,7 @@ loop.call_soon_threadsafe 转移到主线程再调本类。
 """
 from __future__ import annotations
 
+import collections
 import math
 from dataclasses import dataclass
 
@@ -100,6 +101,37 @@ def _seg_mask(W, cx, cy, ri, ro, indices, g, ss):
     return m.point(lambda v: 255 if v >= 130 else 0)
 
 
+def _draw_icon(d, idx, cx, cy, r, color):
+    """在 (cx,cy) 画第 idx 个模式的矢量图标(坐标已是超采样尺度)。
+    idx: 0 键盘(直接打字) 1 ✨(润色) 2/3/4 译 ZH/JA/EN 徽章 5 列表(总结)。"""
+    w = max(2, int(r * 0.15))
+    if idx == 0:                                         # 键盘
+        d.rounded_rectangle((cx - r, cy - r * 0.6, cx + r, cy + r * 0.6), radius=r * 0.22,
+                            outline=color, width=w)
+        dot = max(1, int(w * 0.7))
+        for ky in (-0.18, 0.18):
+            for kx in (-0.6, -0.2, 0.2, 0.6):
+                d.ellipse((cx + kx * r - dot, cy + ky * r - dot, cx + kx * r + dot, cy + ky * r + dot),
+                          fill=color)
+    elif idx == 1:                                       # ✨ 四角星 + 小星点
+        pts = []
+        for k in range(8):
+            ang = math.radians(k * 45 - 90)
+            rad = r if k % 2 == 0 else r * 0.34
+            pts += [cx + rad * math.cos(ang), cy + rad * math.sin(ang)]
+        d.polygon(pts, fill=color)
+        sr, sx, sy = r * 0.32, cx + r * 0.72, cy - r * 0.72
+        d.polygon([sx, sy - sr, sx + sr * 0.34, sy, sx, sy + sr, sx - sr * 0.34, sy], fill=color)
+    elif idx in (2, 3, 4):                               # 译：圆环徽章 + 拉丁码(无汉字)
+        code = {2: "ZH", 3: "JA", 4: "EN"}[idx]
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=color, width=w)
+        d.text((cx, cy), code, font=_font(int(r * 0.8), bold=True), fill=color, anchor="mm")
+    else:                                                # 列表(总结)：项目符号 + 横线
+        for ly in (-0.55, -0.18, 0.19, 0.56):
+            d.ellipse((cx - r * 0.92 - w, cy + ly * r - w, cx - r * 0.92 + w, cy + ly * r + w), fill=color)
+            d.line((cx - r * 0.6, cy + ly * r, cx + r * 0.78, cy + ly * r), fill=color, width=w)
+
+
 def render_menu_image(size, inner, outer, highlight, theme):
     """纯 PIL 渲染环形菜单 → flatten 到 key 色的 RGB 图(不依赖 Tk，可离屏存 PNG 验证)。"""
     from PIL import Image, ImageDraw, ImageFilter
@@ -129,18 +161,15 @@ def render_menu_image(size, inner, outer, highlight, theme):
 
     d = ImageDraw.Draw(base)
     Rm = (inner + outer) / 2 * S
-    for i, label in enumerate(LABELS):                   # 标签沿半径中线
+    for i in range(6):                                   # 6 瓣矢量图标(去汉字)
         on = (i == hi)
         a = math.radians(i * 60 + 30)
-        d.text((cx + Rm * math.cos(a), cy + Rm * math.sin(a)), label,
-               font=_font(int(10.5 * S), bold=on),
-               fill=_rgb(theme["label_hi"] if on else theme["label"]), anchor="mm")
-    hr = (inner - 6) * S                                 # 中心 hub：显示当前选中
+        _draw_icon(d, i, cx + Rm * math.cos(a), cy + Rm * math.sin(a), 17 * S,
+                   _rgb(theme["label_hi"] if on else theme["label"]))
+    hr = (inner - 6) * S                                 # 中心 hub：放大显示当前选中图标(未选=直接打字)
     d.ellipse((cx - hr, cy - hr, cx + hr, cy + hr),
               fill=_rgb(theme["hub"]), outline=_rgb(theme["accent"]), width=int(2 * S))
-    sel = LABELS[hi] if hi is not None else "直接打字"
-    d.text((cx, cy), sel, font=_font(int(13 * S), bold=True),
-           fill=_rgb(theme["hub_text"]), anchor="mm")
+    _draw_icon(d, hi if hi is not None else 0, cx, cy, 22 * S, _rgb(theme["hub_text"]))
 
     base = base.resize((size, size), Image.LANCZOS)      # 缩小 = 抗锯齿
     flat = Image.new("RGB", (size, size), _rgb(theme["key"]))
@@ -148,29 +177,47 @@ def render_menu_image(size, inner, outer, highlight, theme):
     return flat
 
 
-def render_hud_image(W, H, text, frame, theme, ss=3):
-    """纯 PIL 渲染状态浮窗 → flatten 到 key 色的 RGB 图(不依赖 Tk)。"""
+def render_hud_image(W, H, mode, frame, theme, levels=None, progress=0.0, done=False, ss=3):
+    """纯 PIL 渲染状态浮窗(不依赖 Tk)。
+    mode='listen' → 随真实音量起伏的滚动声波条；mode='process' → 0→100% 进度条(done=完成跳满)。
+    """
     from PIL import Image, ImageDraw
     Wp, Hp = W * ss, H * ss
     img = Image.new("RGBA", (Wp, Hp), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((2 * ss, 2 * ss, Wp - 2 * ss, Hp - 2 * ss), radius=18 * ss,
+    d.rounded_rectangle((2 * ss, 2 * ss, Wp - 2 * ss, Hp - 2 * ss), radius=int(18 * ss),
                         fill=_rgb(theme["hud_bg"]), outline=_rgb(theme["accent"]), width=max(1, ss))
-    dot_x, dot_y = 18 * ss, 22 * ss                      # 呼吸状态点
-    pulse = 0.5 + 0.5 * math.sin(frame * 0.18)
-    dr = (3.5 + 1.5 * pulse) * ss
-    d.ellipse((dot_x - dr, dot_y - dr, dot_x + dr, dot_y + dr), fill=_rgb(theme["accent"]))
-    d.text((30 * ss, 22 * ss), text, font=_font(int(11 * ss), bold=True),
-           fill=_rgb(theme["hud_text"]), anchor="lm")
-    bars, bw, gap, midy, maxh = 15, 3, 4, 45, 11         # Siri/EQ 跳动条(胶囊圆头)
-    total = (bars * bw + (bars - 1) * gap) * ss
-    x = (Wp - total) / 2 + bw * ss / 2
-    for i in range(bars):
-        h = (3 + (maxh - 3) * (0.5 + 0.5 * math.sin(frame * 0.33 + i * 0.5))) * ss
-        r = bw * ss / 2
-        d.rounded_rectangle((x - r, midy * ss - h, x + r, midy * ss + h), radius=r,
-                            fill=_rgb(theme["accent"]))
-        x += (bw + gap) * ss
+    midy = Hp * 0.5
+    if mode == "process":                                # 0→100% 进度条
+        pad = 20 * ss
+        bx0, bx1, bh = pad, Wp - pad, 8 * ss
+        p = 1.0 if done else max(0.04, min(0.99, progress))
+        d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["track"]))
+        d.rounded_rectangle((bx0, midy - bh / 2, bx0 + (bx1 - bx0) * p, midy + bh / 2),
+                            radius=bh / 2, fill=_rgb(theme["accent"]))
+        cyk = midy - 13 * ss
+        if done:                                         # 矢量对勾(字体里 ✓ 常缺字→豆腐，手画更稳)
+            k = 5 * ss
+            d.line([(Wp / 2 - k, cyk), (Wp / 2 - k * 0.2, cyk + k * 0.7), (Wp / 2 + k, cyk - k * 0.7)],
+                   fill=_rgb(theme["accent"]), width=max(2, int(2 * ss)), joint="curve")
+        else:
+            d.text((Wp / 2, cyk), f"{int(p * 100)}%", font=_font(int(11 * ss), bold=True),
+                   fill=_rgb(theme["hud_text"]), anchor="mm")
+    else:                                                # listen：滚动声波(随真实音量起伏)
+        vals = list(levels or [])
+        nb, pad = 20, 14 * ss
+        span = Wp - 2 * pad
+        slot = span / nb
+        bw = slot * 0.55
+        vals = [0.0] * (nb - len(vals)) + vals[-nb:]
+        maxh = 0.34 * Hp
+        for i, v in enumerate(vals):
+            idle = 0.10 * (0.5 + 0.5 * math.sin(frame * 0.3 + i * 0.5))   # 静音时也有轻微呼吸
+            vv = max(idle, min(1.0, v))
+            x = pad + slot * (i + 0.5)
+            h = 2 * ss + (maxh - 2 * ss) * vv
+            d.rounded_rectangle((x - bw / 2, midy - h, x + bw / 2, midy + h), radius=bw / 2,
+                                fill=_rgb(theme["accent"]))
     img = img.resize((W, H), Image.LANCZOS)
     flat = Image.new("RGB", (W, H), _rgb(theme["key"]))
     flat.paste(img, (0, 0), img)
@@ -332,21 +379,11 @@ class RadialMenu:
             pass
 
 
-def _clean_text(s: str) -> str:
-    """去掉 emoji/符号(PIL 的 YaHei 渲染不了彩色 emoji，会出豆腐块)，保留中英文。"""
-    out = []
-    for ch in s:
-        o = ord(ch)
-        if 0x1F000 <= o <= 0x1FFFF or 0x2600 <= o <= 0x27BF or 0xFE00 <= o <= 0xFE0F:
-            continue
-        out.append(ch)
-    return "".join(out).strip()
-
-
 class StatusHud:
-    """录音/处理状态浮窗(贴光标，不抢焦点)，Siri/EQ 式跳动条。PIL 抗锯齿渲染。
+    """录音/处理状态浮窗(贴光标，不抢焦点)。PIL 抗锯齿渲染。
 
-    show(text) 显示；tick() 每帧推进动效(由 main.py 的 tk 泵每 ~25ms 调一次)；hide() 收起。
+    show_listen() 显示随真实音量起伏的声波；show_process(est) 显示 0→100% 进度条；
+    feed_level(v) 录音中喂入瞬时音量；finish() 处理完成跳满收起；tick() 每帧推进(main 的 tk 泵 ~25ms 调)。
     """
 
     _SS = 3   # HUD 每帧重绘 → 超采样小一点省开销
@@ -373,14 +410,18 @@ class StatusHud:
         self._c.pack()
         self._win.withdraw()
         self._visible = False
-        self._text = ""
+        self._mode = "listen"             # listen(声波) | process(进度条)
         self._frame = 0
+        self._levels = collections.deque(maxlen=20)   # 最近若干帧音量(0..1)，画滚动声波
+        self._progress = 0.0
+        self._estimate_frames = 52        # 处理进度估计(帧)，由 show_process 按实测时长设定
+        self._proc_frame0 = 0
+        self._done = False
+        self._done_frame = 0
         self._photo = None
         self._img_item = None
 
-    def show(self, text: str) -> None:
-        self._text = _clean_text(text)
-        self._frame = 0
+    def _position_and_show(self) -> None:
         cx, cy = cursor_xy()
         x, y = cx + 18, cy + 22
         self._win.geometry(f"+{x}+{y}")
@@ -397,12 +438,50 @@ class StatusHud:
         self._apply_noactivate()
         self._set_foreground(saved)
         self._visible = True
+
+    def show_listen(self) -> None:
+        self._mode = "listen"
+        self._frame = 0
+        self._levels.clear()
+        self._done = False
+        self._position_and_show()
         self._draw()
 
+    def show_process(self, estimate_s: float = 1.3) -> None:
+        self._mode = "process"
+        self._frame = 0
+        self._proc_frame0 = 0
+        self._estimate_frames = max(8, int(float(estimate_s) / 0.025))
+        self._progress = 0.0
+        self._done = False
+        self._position_and_show()
+        self._draw()
+
+    def feed_level(self, v: float) -> None:
+        # 录音中由 main 每帧喂入瞬时音量(0..1)，听写声波随之起伏。
+        if self._visible and self._mode == "listen":
+            self._levels.append(max(0.0, min(1.0, float(v))))
+
+    def finish(self) -> None:
+        # 处理真正完成：进度瞬跳 100% 再短暂停留后收起。
+        if self._visible and self._mode == "process":
+            self._done = True
+            self._done_frame = self._frame
+        else:
+            self.hide()
+
     def tick(self) -> None:
-        if self._visible:
-            self._frame += 1
-            self._draw()
+        if not self._visible:
+            return
+        self._frame += 1
+        if self._mode == "process":
+            if self._done:
+                if self._frame - self._done_frame > 16:    # 满格后约 0.4s 收起
+                    self.hide()
+                    return
+            else:                                          # 渐近逼近 92%，等真完成再跳满(诚实进度)
+                self._progress = min(0.92, (self._frame - self._proc_frame0) / self._estimate_frames)
+        self._draw()
 
     def hide(self) -> None:
         if not self._visible:
@@ -415,7 +494,9 @@ class StatusHud:
 
     def _draw(self) -> None:
         from PIL import ImageTk
-        flat = render_hud_image(self._W, self._H, self._text, self._frame, self._t, self._SS)
+        flat = render_hud_image(self._W, self._H, self._mode, self._frame, self._t,
+                                levels=list(self._levels), progress=self._progress,
+                                done=self._done, ss=self._SS)
         self._photo = ImageTk.PhotoImage(flat)
         if self._img_item is None:
             self._img_item = self._c.create_image(0, 0, anchor="nw", image=self._photo)

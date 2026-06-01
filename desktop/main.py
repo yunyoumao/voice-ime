@@ -39,14 +39,16 @@ async def run() -> None:
     inflight = {"n": 0}       # 处理管线中未完成的句数（判断"处理中"何时收起）
     hud = None                # 状态浮窗 StatusHud；在菜单块里按需创建
 
-    def set_status(s: str) -> None:
-        # s: listen(听写中) | process(处理中) | off(隐藏)。仅在主线程调用（tk 非线程安全）。
+    def set_status(s: str, est: float = 1.3) -> None:
+        # s: listen(声波) | process(进度条,est=预估秒) | done(完成跳满) | off(隐藏)。仅主线程调用(tk 非线程安全)。
         if hud is None:
             return
         if s == "listen":
-            hud.show("🎧 听写中…")
+            hud.show_listen()
         elif s == "process":
-            hud.show("✍ 处理中…")
+            hud.show_process(est)
+        elif s == "done":
+            hud.finish()
         else:
             hud.hide()
 
@@ -55,16 +57,20 @@ async def run() -> None:
         sys.stdout.flush()
 
     finals: asyncio.Queue = asyncio.Queue()   # 识别结果按序处理队列（杜绝并发乱序）
+    proc_avg = {"s": 1.3}                      # 处理耗时滚动均值(秒)：驱动「处理中」进度条的估计
 
     async def _compute_result(text: str, fmode):
         if fmode is _CANCEL:               # 手势在中心/环外松开 → 取消，丢弃
             return None
+        t0 = loop.time()
         try:
-            return await pipeline.run(text, force_mode=fmode)
+            res = await pipeline.run(text, force_mode=fmode)
         except Exception as exc:  # 处理失败 → 回退原文上屏，绝不吞字
             sys.stdout.write(f"   [处理失败，回退原文] {exc}\n")
             sys.stdout.flush()
-            return Result(text=text, mode="raw", sink="type")
+            res = Result(text=text, mode="raw", sink="type")
+        proc_avg["s"] = proc_avg["s"] * 0.7 + (loop.time() - t0) * 0.3   # 滚动均值 → 进度条估时
+        return res
 
     async def _emit_result(result) -> None:
         if result is None:
@@ -87,24 +93,32 @@ async def run() -> None:
 
         async def _launcher() -> None:
             while True:
-                text, fmode = await finals.get()
-                inflight["n"] += 1
-                ordered.put_nowait(asyncio.ensure_future(_compute(text, fmode)))
-                finals.task_done()
+                try:
+                    text, fmode = await finals.get()
+                    inflight["n"] += 1
+                    ordered.put_nowait(asyncio.ensure_future(_compute(text, fmode)))
+                    finals.task_done()
+                except Exception as exc:               # 防 launcher 崩掉→后续识别全卡(Codex 审查)
+                    sys.stdout.write(f"   [launcher 异常] {exc}\n")
+                    sys.stdout.flush()
 
         async def _emitter() -> None:
             while True:
-                task = await ordered.get()
                 try:
-                    await _emit_result(await task)   # 按入队顺序逐个等待 → 上屏严格保序
-                except Exception as exc:
-                    sys.stdout.write(f"   [处理异常] {exc}\n")
+                    task = await ordered.get()
+                    try:
+                        await _emit_result(await task)   # 按入队顺序逐个等待 → 上屏严格保序
+                    except Exception as exc:
+                        sys.stdout.write(f"   [处理异常] {exc}\n")
+                        sys.stdout.flush()
+                    finally:
+                        ordered.task_done()
+                        inflight["n"] = max(0, inflight["n"] - 1)
+                    if finals.empty() and inflight["n"] == 0 and not rec["on"]:
+                        set_status("done")  # 全部处理完且已停录 → 进度跳满 100% 后收起
+                except Exception as exc:                 # emitter 永不退出(Codex 审查: gather 吞异常会卡死)
+                    sys.stdout.write(f"   [emitter 异常] {exc}\n")
                     sys.stdout.flush()
-                finally:
-                    ordered.task_done()
-                    inflight["n"] = max(0, inflight["n"] - 1)
-                if finals.empty() and inflight["n"] == 0 and not rec["on"]:
-                    set_status("off")        # 全部处理完且已停录 → 收起状态浮窗
 
         await asyncio.gather(_launcher(), _emitter())
 
@@ -151,6 +165,10 @@ async def run() -> None:
 
     audio = AudioRecorder(cfg, on_frame)
     hotkey = HotkeyListener(cfg, on_start, on_stop)
+    rcfg = cfg.get("remote") or {}          # 蓝牙遥控器(如 CheerTok)：音量键当触发，拦截其调音量副作用
+    if rcfg.get("talk_hotkey"):             # 音量+ = toggle 点按说话(默认模式)
+        hotkey.add_binding(rcfg["talk_hotkey"], "toggle", on_start, on_stop,
+                           suppress=bool(rcfg.get("suppress", True)))
     hotkey.start()
     try:
         audio.start()                   # 麦克风常开：消除每次按键的冷启动延迟（吞字主因）
@@ -178,7 +196,8 @@ async def run() -> None:
             except Exception:
                 hud = None
             # toggle 状态机：IDLE →(按住中键)SELECTING →(松在某瓣)RECORDING →(再点中键)IDLE
-            gstate = {"s": "IDLE"}
+            gstate = {"s": "IDLE", "tap": False, "dz": None, "dn": 0}
+            dwell_ms = int((cfg.get("mouse_menu") or {}).get("dwell_ms", 1200))
 
             def g_press(x: int, y: int) -> None:
                 if gstate["s"] == "RECORDING":     # 免持录音中，再点中键 = 停止并上屏
@@ -186,6 +205,7 @@ async def run() -> None:
                     events.put_nowait(("ctrl", "STOP"))
                     return
                 gstate["s"] = "SELECTING"          # 开始一次新选择 + 录音
+                gstate["tap"] = False              # 按住拖选：靠松开确认，不走悬停 dwell
                 forced["mode"] = None
                 print(f"   [菜单] 已弹出 @ ({x},{y}) — 移到某一瓣后松开选择")
                 menu.show(x, y)
@@ -213,7 +233,7 @@ async def run() -> None:
                     print(f"🔒 已选 [{LABELS[idx]}]，继续说话；再按一下右 Ctrl 停止上屏。")
 
             btn = str((cfg.get("mouse_menu") or {}).get("button", "middle")).lower()
-            if btn in ("middle", "right", "left"):     # 鼠标键触发（move 即时更新高亮）
+            if btn in ("middle", "right", "left"):     # 鼠标键触发（按住拖→松开选，move 即时更新高亮）
                 gesture = MouseGestureListener(
                     cfg,
                     on_press=lambda x, y: loop.call_soon_threadsafe(g_press, x, y),
@@ -230,12 +250,60 @@ async def run() -> None:
                     lambda: loop.call_soon_threadsafe(g_release, *cursor_xy()),
                 )
 
+            def menu_tap(x: int, y: int) -> None:
+                # 遥控器"点按"开轮盘的三步循环(tap)，复用 gstate + 同套选择逻辑：
+                # IDLE→开菜单+录(SELECTING)；SELECTING→锁高亮瓣+免持续录(RECORDING)；RECORDING→停止上屏。
+                s = gstate["s"]
+                if s == "IDLE":
+                    gstate["s"] = "SELECTING"
+                    gstate["tap"] = True               # 悬停自动确认：移到某瓣停约 dwell_ms 即选中，无需点击→不抢焦点
+                    gstate["dz"], gstate["dn"] = None, 0
+                    forced["mode"] = None
+                    print(f"   [菜单] 已弹出 @ ({x},{y}) — 移到某一瓣悬停约 {dwell_ms}ms 自动选中")
+                    menu.show(x, y)
+                    events.put_nowait(("ctrl", "START"))
+                elif s == "SELECTING":
+                    z = menu.zone(x, y)
+                    menu.hide()
+                    if z == "outside":                 # 环外松开 = 取消
+                        forced["mode"] = _CANCEL
+                        gstate["s"] = "IDLE"
+                        set_status("off")
+                        events.put_nowait(("ctrl", "STOP"))
+                    else:                              # 某瓣 / 中心(默认直接打字) → 锁模式，免持续录
+                        idx = z if isinstance(z, int) else 0
+                        forced["mode"] = MODES[idx]
+                        gstate["s"] = "RECORDING"
+                        set_status("listen")
+                        print(f"🔒 已选 [{LABELS[idx]}]，继续说话；再点一下停止上屏。")
+                elif s == "RECORDING":
+                    gstate["s"] = "IDLE"
+                    events.put_nowait(("ctrl", "STOP"))
+
+            if rcfg.get("menu_hotkey"):                # 音量- = tap 点按开轮盘
+                hotkey.add_binding(
+                    rcfg["menu_hotkey"], "tap",
+                    lambda: loop.call_soon_threadsafe(menu_tap, *cursor_xy()), None,
+                    suppress=bool(rcfg.get("suppress", True)),
+                )
+
+            dwell_ticks = max(1, int(dwell_ms / 25))   # 悬停自动确认所需 tick 数(每 tick ~25ms)
+
             async def _pump_tk() -> None:
                 while True:
-                    if gstate["s"] == "SELECTING":     # 键盘触发无鼠标move → 轮询光标刷新高亮
-                        menu.highlight(menu.hit_test(*cursor_xy()))
+                    if gstate["s"] == "SELECTING":     # 键盘/遥控器触发无鼠标move → 轮询光标刷新高亮
+                        x, y = cursor_xy()
+                        menu.highlight(menu.hit_test(x, y))
+                        if gstate.get("tap"):          # tap/遥控器开的菜单：移到某瓣"悬停"自动确认(免点击→不抢焦点)
+                            z = menu.zone(x, y)
+                            if z != "center" and z == gstate.get("dz"):
+                                gstate["dn"] += 1
+                                if gstate["dn"] >= dwell_ticks:
+                                    g_release(x, y)    # 悬停够久 → 确认(瓣=锁模式 / 环外=取消)
+                            else:
+                                gstate["dz"], gstate["dn"] = z, 0
                     if hud is not None:
-                        hud.tick()                     # 推进状态浮窗流动进度动效
+                        hud.tick()                     # 推进状态浮窗动效
                     menu.pump()
                     await asyncio.sleep(0.025)
             pump_task = asyncio.create_task(_pump_tk())
@@ -266,7 +334,10 @@ async def run() -> None:
                     seg_frames += 1
                     arr = np.frombuffer(data, dtype=np.int16)
                     if arr.size:
-                        seg_peak = max(seg_peak, int(np.abs(arr).max()))
+                        peak = int(np.abs(arr).max())
+                        seg_peak = max(seg_peak, peak)
+                        if hud is not None:
+                            hud.feed_level(min(1.0, peak / 10000.0))   # 归一化喂浮窗声波(10000≈说话峰值,可调)
             elif kind == "ctrl":
                 if data == "START" and not rec["on"]:
                     await engine.start()
@@ -276,7 +347,7 @@ async def run() -> None:
                     seg_frames, seg_peak = 0, 0
                 elif data == "STOP" and rec["on"]:
                     rec["on"] = False
-                    set_status("process")            # 停录 → 显示「处理中」，worker 处理完再隐藏
+                    set_status("process", proc_avg["s"])   # 停录 → 进度条(按滚动均值估时)，处理完跳满
                     await asyncio.sleep(0.08)         # 等残留音频帧入队
                     await _drain_audio(engine, events)
                     await engine.stop()

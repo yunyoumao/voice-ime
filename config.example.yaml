@@ -22,6 +22,13 @@ hotkey: "<alt_r>"
 # 触发方式：hold(按住说话、松开停，默认) | toggle(按一下开始、再按一下停，适合说长段/总结)
 hotkey_mode: hold
 
+# 蓝牙遥控器接入(可选)：把遥控器在电脑上发出的某个键当语音触发，并可拦截其原本副作用。
+# 例：CheerTok 这类遥控器在 PC 上只发 音量±/翻页±；翻页会滚屏，用音量键最合适。
+remote:
+  talk_hotkey: ""    # 例 "<media_volume_up>"：音量+键当"点按说话"(toggle 点开/再点停)
+  menu_hotkey: ""    # 例 "<media_volume_down>"：点按开轮盘 → 触摸板移到某瓣"悬停"约1.2秒自动选中(见 mouse_menu.dwell_ms)
+  suppress: true     # 拦截上述键原本副作用(如音量±不再改系统音量)；false=不拦截
+
 # 录音参数（所有引擎统一 16k / 单声道 / PCM16）
 audio:
   samplerate: 16000
@@ -44,12 +51,13 @@ overlay:
 # 6 瓣：直接打字/语音润色/译中/译日/译英/总结。
 mouse_menu:
   enabled: true
-  button: none            # 鼠标触发键：none(不用鼠标,推荐配 hotkey) | middle | right | left
+  button: none            # 鼠标拖选触发键：none(推荐,tap开的菜单用"悬停"确认,见 dwell_ms) | middle | right | left
   hotkey: "<ctrl_r>"      # 键盘开菜单键(右Ctrl,零冲突)。按住选→松开锁定免持→再点停。空=不用键盘
   theme: purple           # 配色主题：purple(淡紫) | green(墨绿) | cream(奶白)
   inner_radius: 55        # 中心死区半径(像素)：松开在此圈内=默认直接打字(raw)
 
   outer_radius: 160       # 外环半径(像素)
+  dwell_ms: 1200          # 遥控器/tap 开菜单时光标"悬停"这么久自动选中(免点击→不抢焦点)。调大更不易误选
 
 # ---------------- 处理层：语音 → AI 工作流 ----------------
 pipeline:
