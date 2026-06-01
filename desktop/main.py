@@ -165,7 +165,7 @@ async def run() -> None:
             menu = None
         if menu is not None:
             try:
-                hud = StatusHud(menu.root)      # 状态浮窗复用菜单的 tk root
+                hud = StatusHud(menu.root, menu.theme)   # 状态浮窗复用菜单的 tk root + 主题
             except Exception:
                 hud = None
             # toggle 状态机：IDLE →(按住中键)SELECTING →(松在某瓣)RECORDING →(再点中键)IDLE
@@ -225,6 +225,8 @@ async def run() -> None:
                 while True:
                     if gstate["s"] == "SELECTING":     # 键盘触发无鼠标move → 轮询光标刷新高亮
                         menu.highlight(menu.hit_test(*cursor_xy()))
+                    if hud is not None:
+                        hud.tick()                     # 推进状态浮窗流动进度动效
                     menu.pump()
                     await asyncio.sleep(0.025)
             pump_task = asyncio.create_task(_pump_tk())

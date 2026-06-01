@@ -46,7 +46,9 @@ mouse_menu:
   enabled: true
   button: none            # 鼠标触发键：none(不用鼠标,推荐配 hotkey) | middle | right | left
   hotkey: "<ctrl_r>"      # 键盘开菜单键(右Ctrl,零冲突)。按住选→松开锁定免持→再点停。空=不用键盘
-  inner_radius: 55        # 中心死区半径(像素)：松开在此圈内=取消
+  theme: purple           # 配色主题：purple(淡紫) | green(墨绿) | cream(奶白)
+  inner_radius: 55        # 中心死区半径(像素)：松开在此圈内=默认直接打字(raw)
+
   outer_radius: 160       # 外环半径(像素)
 
 # ---------------- 处理层：语音 → AI 工作流 ----------------
