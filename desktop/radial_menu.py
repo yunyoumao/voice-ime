@@ -312,17 +312,16 @@ def render_hud_glass_content(W, H, mode, frame, levels=None, progress=0.0, done=
         pad = 20 * ss
         bx0, bx1, bh = pad, Wp - pad, 8 * ss
         cyk = midy - 13 * ss
+        p = 1.0 if done else max(0.05, min(0.97, progress))
         d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=(255, 255, 255, 60))
+        d.rounded_rectangle((bx0, midy - bh / 2, bx0 + (bx1 - bx0) * p, midy + bh / 2), radius=bh / 2, fill=ACC)
         if done:
-            d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=ACC)
             k = 5 * ss
             d.line([(Wp / 2 - k, cyk), (Wp / 2 - k * 0.2, cyk + k * 0.7), (Wp / 2 + k, cyk - k * 0.7)],
                    fill=(255, 255, 255, 245), width=max(2, int(2 * ss)), joint="curve")
         else:
-            seg = (bx1 - bx0) * 0.32
-            t = 0.5 - 0.5 * math.cos(frame * 0.12)
-            sx = bx0 + (bx1 - bx0 - seg) * t
-            d.rounded_rectangle((sx, midy - bh / 2, sx + seg, midy + bh / 2), radius=bh / 2, fill=ACC)
+            d.text((Wp / 2, cyk), f"{int(p * 100)}%", font=_font(int(11 * ss), bold=True),
+                   fill=(235, 240, 255, 245), anchor="mm")
     else:                                                # listen：滚动声波
         vals = list(levels or [])
         nb, pad = 20, 14 * ss

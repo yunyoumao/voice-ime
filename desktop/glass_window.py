@@ -529,7 +529,12 @@ def _register_glass_window_class():
         wc.hInstance = None
     wc.hbrBackground = None
     wc.hIcon = None
-    wc.hCursor = None
+    try:                                                  # 设正常箭头光标：否则鼠标在玻璃窗上会显示系统忙碌/沙漏光标
+        u.LoadCursorW.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        u.LoadCursorW.restype = ctypes.c_void_p
+        wc.hCursor = u.LoadCursorW(None, 32512)           # IDC_ARROW
+    except Exception:
+        wc.hCursor = None
     wc.lpszMenuName = None
     wc.cbClsExtra = 0
     wc.cbWndExtra = 0

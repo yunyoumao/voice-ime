@@ -307,7 +307,7 @@ async def run() -> None:
                     if hud is not None:
                         hud.tick()                     # 推进状态浮窗动效
                     menu.pump()
-                    await asyncio.sleep(0.025)
+                    await asyncio.sleep(0.016)           # ~60fps：高亮跟手更快(原 25ms 偏慢)
             pump_task = asyncio.create_task(_pump_tk())
             trig = ([f"{btn}键"] if btn in ("middle", "right", "left") else []) + ([f"快捷键{mk}"] if mk else [])
             print(f"🖱  环形菜单已启用：{' / '.join(trig) or '未配置触发'}"
