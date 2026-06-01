@@ -27,6 +27,8 @@ audio:
   samplerate: 16000
   channels: 1
   blocksize: 1600        # 每帧采样数，1600 = 100ms @16kHz
+  device: null           # 输入设备：null=系统默认；可填索引(整数)或名字片段
+  gain: 1.0              # 软件增益倍数：远程桌面/RDP 麦偏小声时调大(试 4~8)，1.0=不变
 
 # 上屏方式
 output:

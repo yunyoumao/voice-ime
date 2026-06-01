@@ -33,7 +33,19 @@ class LocalSenseVoiceASR(StreamingASR):
             if not p or not os.path.exists(p):
                 raise FileNotFoundError(
                     f"本地模型缺失：{p or model_dir}\n"
-                    f"请先运行： bash scripts/download_sensevoice.sh"
+                    f"请先运行： python scripts/download_model.py"
+                )
+
+        # sherpa-onnx 在 Windows 读不了非 ASCII 路径（中文目录会让词表加载失败）→ 转成 ASCII 安全路径
+        model_file = self._sherpa_path(model_file)
+        tokens = self._sherpa_path(tokens)
+        vad_path = self._sherpa_path(vad_path)
+        for p in (model_file, tokens, vad_path):
+            if os.name == "nt" and not p.isascii():
+                raise RuntimeError(
+                    f"sherpa-onnx 无法加载非 ASCII 路径的模型：{p}\n"
+                    f"   解决：① 用 scripts\\run.bat 从项目根目录启动；"
+                    f"或 ② 把项目移到纯英文路径（如 C:\\voice-input）。"
                 )
 
         self._recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
@@ -59,6 +71,34 @@ class LocalSenseVoiceASR(StreamingASR):
             if os.path.exists(p):
                 return p
         return ""
+
+    @staticmethod
+    def _sherpa_path(p: str) -> str:
+        """转成 sherpa-onnx 能打开的 ASCII 路径（仅 Windows 需要）。
+
+        sherpa-onnx 在 Windows 用窄字符 C++ API 读 model/tokens，路径含非 ASCII
+        （如中文目录名「语音输入法」）会静默读不到词表 → 解码时抛
+        `IndexError: invalid unordered_map<K, T> key`。优先用相对当前工作目录的
+        路径（启动脚本已把 cwd 切到项目根，models/… 段是纯 ASCII），其次试 8.3 短路径。"""
+        if os.name != "nt":
+            return p
+        ap = os.path.abspath(p)
+        if ap.isascii():
+            return ap
+        try:
+            rel = os.path.relpath(ap)
+            if rel.isascii() and os.path.exists(rel):
+                return rel
+        except ValueError:
+            pass
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(1024)
+            if ctypes.windll.kernel32.GetShortPathNameW(ap, buf, 1024) and buf.value.isascii():
+                return buf.value
+        except Exception:
+            pass
+        return ap
 
     @property
     def supports_partial(self) -> bool:
