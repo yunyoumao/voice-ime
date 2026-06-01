@@ -10,6 +10,13 @@ import sys
 import tarfile
 import urllib.request
 
+# 中文 Windows 控制台默认 GBK，print 带 ✓/… 在管道/重定向下会 UnicodeEncodeError；强制 stdout UTF-8。
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
 SV = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
