@@ -201,6 +201,23 @@ async def run() -> None:
             gstate = {"s": "IDLE", "tap": False, "dz": None, "dn": 0}
             dwell_ms = int((cfg.get("mouse_menu") or {}).get("dwell_ms", 1200))
 
+            def _apply_selection(z, stop_hint: str) -> None:
+                # 判区落子(g_release/menu_tap 共用，仅停止提示不同；调用前已 menu.hide())：
+                # "outside"=取消丢弃 | int(瓣)=强制该模式 | "center"=不选→走默认(default_mode 现为润色)+前缀路由。
+                if z == "outside":
+                    forced["mode"] = _CANCEL
+                    gstate["s"] = "IDLE"
+                    set_status("off")
+                    events.put_nowait(("ctrl", "STOP"))
+                    return
+                if isinstance(z, int):
+                    forced["mode"], label = MODES[z], LABELS[z]
+                else:                              # 中心不选 → None，不再硬塞 raw
+                    forced["mode"], label = None, "默认（润色）"
+                gstate["s"] = "RECORDING"
+                set_status("listen")
+                print(f"🔒 已选 [{label}]，继续说话；{stop_hint}")
+
             def g_press(x: int, y: int) -> None:
                 if gstate["s"] == "RECORDING":     # 免持录音中，再点中键 = 停止并上屏
                     gstate["s"] = "IDLE"
@@ -220,23 +237,9 @@ async def run() -> None:
             def g_release(x: int, y: int) -> None:
                 if gstate["s"] != "SELECTING":     # 停止那次按下的松开 → 忽略
                     return
-                z = menu.zone(x, y)                # int(瓣) | "center"(默认直接打字) | "outside"(取消)
+                z = menu.zone(x, y)                # int(瓣) | "center"(默认润色) | "outside"(取消)
                 menu.hide()
-                if z == "outside":                 # 拖到环外松开 = 取消
-                    forced["mode"] = _CANCEL
-                    gstate["s"] = "IDLE"
-                    set_status("off")
-                    events.put_nowait(("ctrl", "STOP"))
-                else:                              # 某瓣 / 中心 → 锁模式，免持续录
-                    if isinstance(z, int):         # 选中某一瓣 → 强制该模式
-                        forced["mode"] = MODES[z]
-                        label = LABELS[z]
-                    else:                          # 中心不选 = 走默认(default_mode，现为润色)+前缀路由，不再硬塞 raw
-                        forced["mode"] = None
-                        label = "默认（润色）"
-                    gstate["s"] = "RECORDING"
-                    set_status("listen")
-                    print(f"🔒 已选 [{label}]，继续说话；再按一下右 Ctrl 停止上屏。")
+                _apply_selection(z, "再按一下右 Ctrl 停止上屏。")
 
             btn = str((cfg.get("mouse_menu") or {}).get("button", "middle")).lower()
             if btn in ("middle", "right", "left"):     # 鼠标键触发（按住拖→松开选，move 即时更新高亮）
@@ -271,21 +274,7 @@ async def run() -> None:
                 elif s == "SELECTING":
                     z = menu.zone(x, y)
                     menu.hide()
-                    if z == "outside":                 # 环外松开 = 取消
-                        forced["mode"] = _CANCEL
-                        gstate["s"] = "IDLE"
-                        set_status("off")
-                        events.put_nowait(("ctrl", "STOP"))
-                    else:                              # 某瓣 / 中心 → 锁模式，免持续录
-                        if isinstance(z, int):         # 选中某一瓣 → 强制该模式
-                            forced["mode"] = MODES[z]
-                            label = LABELS[z]
-                        else:                          # 中心不选 = 走默认(default_mode，现为润色)+前缀路由
-                            forced["mode"] = None
-                            label = "默认（润色）"
-                        gstate["s"] = "RECORDING"
-                        set_status("listen")
-                        print(f"🔒 已选 [{label}]，继续说话；再点一下停止上屏。")
+                    _apply_selection(z, "再点一下停止上屏。")
                 elif s == "RECORDING":
                     gstate["s"] = "IDLE"
                     events.put_nowait(("ctrl", "STOP"))
