@@ -383,6 +383,13 @@ async def _drain_audio(engine, events: asyncio.Queue) -> None:
 
 
 def main() -> None:
+    # 首启：本地引擎且模型缺失则弹窗下载(打包后用户首次运行走这条)；取消则退出。
+    cfg = load_config()
+    if str(cfg.get("engine") or "local").lower() == "local":
+        from desktop.download_prompt import check_and_download
+        if not check_and_download(cfg):
+            print("\n已取消下载模型，退出。")
+            return
     try:
         asyncio.run(run())
     except KeyboardInterrupt:

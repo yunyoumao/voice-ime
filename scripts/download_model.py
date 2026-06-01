@@ -1,7 +1,8 @@
 """下载本地引擎模型（跨平台，Mac / Windows / Linux 通用）。
 
 SenseVoice（中英日韩粤）+ Silero VAD，约 230MB。不依赖 curl/tar/bash。
-用法： python scripts/download_model.py
+用法： python scripts/download_model.py           # 下到项目根 models/
+可编程调用： main(models_dir, progress=cb)        # 指定目录 + 进度回调(GUI 用)
 """
 from __future__ import annotations
 
@@ -23,45 +24,61 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS = os.path.join(ROOT, "models")
 
 
-def _download(url: str, dest: str) -> None:
-    print(f"==> 下载 {os.path.basename(dest)} …")
+def _download(url: str, dest: str, progress=None, label: str = "") -> None:
+    if progress is None:
+        print(f"==> 下载 {os.path.basename(dest)} …")
 
     def hook(block: int, block_size: int, total: int) -> None:
         if total > 0:
             pct = min(100, block * block_size * 100 // total)
-            sys.stdout.write(f"\r    {pct}%   ")
-            sys.stdout.flush()
+            if progress:
+                progress(label, pct)
+            else:
+                sys.stdout.write(f"\r    {pct}%   ")
+                sys.stdout.flush()
 
     urllib.request.urlretrieve(url, dest, hook)
-    sys.stdout.write("\r    100%  \n")
-    sys.stdout.flush()
+    if progress:
+        progress(label, 100)
+    else:
+        sys.stdout.write("\r    100%  \n")
+        sys.stdout.flush()
 
 
-def main() -> None:
-    os.makedirs(MODELS, exist_ok=True)
+def main(models_dir: str | None = None, progress=None) -> None:
+    """下载模型到 models_dir（默认项目根 models/）。progress(label, pct) 可选，供 GUI 进度。"""
+    models = models_dir or MODELS
+    os.makedirs(models, exist_ok=True)
 
-    sv_dir = os.path.join(MODELS, SV)
+    sv_dir = os.path.join(models, SV)
     if not os.path.isdir(sv_dir):
-        tar_path = os.path.join(MODELS, SV + ".tar.bz2")
-        _download(f"{BASE}/{SV}.tar.bz2", tar_path)
-        print("==> 解压 …")
+        tar_path = os.path.join(models, SV + ".tar.bz2")
+        _download(f"{BASE}/{SV}.tar.bz2", tar_path, progress, "下载识别模型")
+        if progress:
+            progress("解压识别模型…", 100)
+        else:
+            print("==> 解压 …")
         with tarfile.open(tar_path, "r:bz2") as t:
             try:
-                t.extractall(MODELS, filter="data")   # Python 3.12+
+                t.extractall(models, filter="data")   # Python 3.12+
             except TypeError:
-                t.extractall(MODELS)
+                t.extractall(models)
         os.remove(tar_path)
-        print(f"✓ SenseVoice 解压完成")
-    else:
+        if not progress:
+            print("✓ SenseVoice 解压完成")
+    elif not progress:
         print("✓ SenseVoice 已存在，跳过")
 
-    vad = os.path.join(MODELS, "silero_vad.onnx")
+    vad = os.path.join(models, "silero_vad.onnx")
     if not os.path.isfile(vad):
-        _download(f"{BASE}/silero_vad.onnx", vad)
-    else:
+        _download(f"{BASE}/silero_vad.onnx", vad, progress, "下载 VAD 模型")
+    elif not progress:
         print("✓ Silero VAD 已存在，跳过")
 
-    print(f"\n✓ 模型就绪：{MODELS}")
+    if progress:
+        progress("完成", 100)
+    else:
+        print(f"\n✓ 模型就绪：{models}")
 
 
 if __name__ == "__main__":
