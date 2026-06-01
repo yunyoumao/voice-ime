@@ -10,12 +10,12 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
+from desktop.config import get_model_base
 from scripts.download_model import SV, main as download_main
 
 
 def check_and_download(cfg: dict) -> bool:
-    base = cfg.get("_model_base") or cfg.get("_root", ".")
-    models_dir = os.path.join(base, "models")
+    models_dir = os.path.join(get_model_base(cfg), "models")
     sv = os.path.join(models_dir, SV)
     vad = os.path.join(models_dir, "silero_vad.onnx")
     if os.path.isdir(sv) and os.path.isfile(vad):

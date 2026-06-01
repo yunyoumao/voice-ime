@@ -28,6 +28,12 @@ def get_user_data_dir() -> str:
     return os.path.expanduser("~/.config/voice-input")
 
 
+def get_model_base(cfg: dict) -> str:
+    """模型基目录(其下含 models/…)。由 load_config 注入 _model_base；缺省回退项目根。
+    各处(local 引擎、首启下载窗)统一用它解析，避免各算各的。"""
+    return cfg.get("_model_base") or cfg.get("_root", ".")
+
+
 def load_config(path: str | None = None) -> dict:
     """加载配置。优先级：指定 path > 项目根 config.yaml(dev) > 用户目录 config.yaml(打包，首启播种)。"""
     user_data = get_user_data_dir()
@@ -47,7 +53,8 @@ def load_config(path: str | None = None) -> dict:
     cfg["_root"] = ROOT
     cfg["_config_path"] = path
     cfg["_user_data_dir"] = user_data
-    # 模型基目录：仓库里有 models/ 就用项目根(dev)，否则用用户目录(打包态，首启下载到这)
+    # 模型基目录：仓库有 models/ → 项目根(dev)；否则用户目录。
+    # 打包(frozen)态 ROOT=只读资源根、不含 models/ → 检查失败自动落到用户目录(首启下载到这)。
     cfg["_model_base"] = ROOT if os.path.isdir(os.path.join(ROOT, "models")) else user_data
     return cfg
 

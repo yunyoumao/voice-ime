@@ -19,7 +19,8 @@ class LocalSenseVoiceASR(StreamingASR):
         super().__init__(cfg, on_partial, on_final)
         import sherpa_onnx  # 延迟导入（重依赖）
 
-        root = cfg.get("_model_base") or cfg.get("_root", ".")   # 模型基目录：dev=项目根 / 打包=用户数据目录
+        from desktop.config import get_model_base
+        root = get_model_base(cfg)               # 模型基目录(dev=项目根 / 打包=用户目录)，与首启下载窗解析一致
         ec = (cfg.get("engines") or {}).get("local", {})
         model_dir = os.path.join(root, ec.get("model_dir", ""))
         vad_path = os.path.join(root, ec.get("vad_model", ""))
