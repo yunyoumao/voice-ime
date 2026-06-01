@@ -192,7 +192,9 @@ async def run() -> None:
             menu = None
         if menu is not None:
             try:
-                hud = StatusHud(menu.root, menu.theme)   # 状态浮窗复用菜单的 tk root + 主题
+                hud = StatusHud(menu.root, menu.theme,   # 状态浮窗复用菜单的 tk root + 主题 + 玻璃设置
+                                glass=getattr(menu, "_glass", False),
+                                glass_tint=getattr(menu, "_glass_tint", (22, 24, 42, 78)))
             except Exception:
                 hud = None
             # toggle 状态机：IDLE →(按住中键)SELECTING →(松在某瓣)RECORDING →(再点中键)IDLE

@@ -281,6 +281,95 @@ def setup_glass_toplevel(
     )
 
 
+def show_layered_image(hwnd: int, img_rgba, x: int, y: int) -> bool:
+    """用 UpdateLayeredWindow 以"逐像素 alpha"显示一张 PIL RGBA 图：花瓣形磨砂+矢量内容按真 alpha 合成、
+    边缘平滑无毛边、瓣外完全透明(透出真实桌面)。不走色键抠图。每次内容变化(高亮)重调即可。"""
+    import ctypes
+    from ctypes import wintypes
+
+    class _SIZE(ctypes.Structure):
+        _fields_ = [("cx", wintypes.LONG), ("cy", wintypes.LONG)]
+
+    class _BMIH(ctypes.Structure):
+        _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+                    ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                    ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                    ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+                    ("biClrImportant", wintypes.DWORD)]
+
+    class _BLEND(ctypes.Structure):
+        _fields_ = [("BlendOp", ctypes.c_byte), ("BlendFlags", ctypes.c_byte),
+                    ("SourceConstantAlpha", ctypes.c_byte), ("AlphaFormat", ctypes.c_byte)]
+
+    HWND = HDC = HBITMAP = HGDIOBJ = ctypes.c_void_p     # 64 位句柄必须当指针，否则 ctypes 按 int 溢出
+    LONG_PTR = ctypes.c_ssize_t
+    try:
+        img = img_rgba.convert("RGBA")
+        w, h = img.size
+        data = img.tobytes("raw", "BGRa")          # 预乘 alpha 的 BGRA(PIL 的 'BGRa' = premultiplied)
+        u, g = ctypes.windll.user32, ctypes.windll.gdi32
+        GWL_EXSTYLE, WS_EX_LAYERED, ULW_ALPHA, AC_SRC_OVER, AC_SRC_ALPHA = -20, 0x80000, 2, 0, 1
+
+        u.GetWindowLongPtrW.argtypes = [HWND, ctypes.c_int]
+        u.GetWindowLongPtrW.restype = LONG_PTR
+        u.SetWindowLongPtrW.argtypes = [HWND, ctypes.c_int, LONG_PTR]
+        u.SetWindowLongPtrW.restype = LONG_PTR
+        u.GetDC.argtypes = [HWND]; u.GetDC.restype = HDC
+        u.ReleaseDC.argtypes = [HWND, HDC]
+        g.CreateCompatibleDC.argtypes = [HDC]; g.CreateCompatibleDC.restype = HDC
+        g.CreateDIBSection.argtypes = [HDC, ctypes.c_void_p, ctypes.c_uint,
+                                       ctypes.POINTER(ctypes.c_void_p), HGDIOBJ, ctypes.c_uint]
+        g.CreateDIBSection.restype = HBITMAP
+        g.SelectObject.argtypes = [HDC, HGDIOBJ]; g.SelectObject.restype = HGDIOBJ
+        g.DeleteObject.argtypes = [HGDIOBJ]; g.DeleteDC.argtypes = [HDC]
+        u.UpdateLayeredWindow.argtypes = [HWND, HDC, ctypes.POINTER(wintypes.POINT), ctypes.POINTER(_SIZE),
+                                          HDC, ctypes.POINTER(wintypes.POINT), wintypes.DWORD,
+                                          ctypes.POINTER(_BLEND), wintypes.DWORD]
+
+        hwnd = ctypes.c_void_p(int(hwnd))
+        u.SetWindowLongPtrW(hwnd, GWL_EXSTYLE, u.GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED)
+
+        hdr = _BMIH()
+        hdr.biSize = ctypes.sizeof(_BMIH)
+        hdr.biWidth, hdr.biHeight = w, -h          # 负高 = 顶向下
+        hdr.biPlanes, hdr.biBitCount, hdr.biCompression = 1, 32, 0
+        screen_dc = u.GetDC(None)
+        mem_dc = g.CreateCompatibleDC(screen_dc)
+        ppv = ctypes.c_void_p()
+        hbmp = g.CreateDIBSection(mem_dc, ctypes.byref(hdr), 0, ctypes.byref(ppv), None, 0)
+        ctypes.memmove(ppv, data, len(data))
+        old = g.SelectObject(mem_dc, hbmp)
+        pt_dst, size, pt_src = wintypes.POINT(int(x), int(y)), _SIZE(w, h), wintypes.POINT(0, 0)
+        blend = _BLEND(AC_SRC_OVER, 0, 255, AC_SRC_ALPHA)
+        u.UpdateLayeredWindow(hwnd, screen_dc, ctypes.byref(pt_dst), ctypes.byref(size),
+                              mem_dc, ctypes.byref(pt_src), 0, ctypes.byref(blend), ULW_ALPHA)
+        g.SelectObject(mem_dc, old)
+        g.DeleteObject(hbmp)
+        g.DeleteDC(mem_dc)
+        u.ReleaseDC(None, screen_dc)
+        return True
+    except Exception as e:
+        print("show_layered_image 失败:", e)
+        return False
+
+
+def set_layered(hwnd: int) -> bool:
+    """先给窗口加 WS_EX_LAYERED：首次 UpdateLayeredWindow 前置好 → deiconify 不会黑闪。"""
+    import ctypes
+    try:
+        u = ctypes.windll.user32
+        u.GetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+        u.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
+        u.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+        GWL_EXSTYLE, WS_EX_LAYERED = -20, 0x80000
+        h = ctypes.c_void_p(int(hwnd))
+        u.SetWindowLongPtrW(h, GWL_EXSTYLE, u.GetWindowLongPtrW(h, GWL_EXSTYLE) | WS_EX_LAYERED)
+        return True
+    except Exception:
+        return False
+
+
 def apply_acrylic(hwnd: int, gradient_abgr: int = 0x66141019) -> bool:
     """ACCENT_ENABLE_ACRYLICBLURBEHIND + 自定义着色(ABGR：高字节=alpha，越小越透明)。
     Win10/11 通用，比 DWM SYSTEMBACKDROP 更能精确控制"磨砂浓度/透明度"。"""

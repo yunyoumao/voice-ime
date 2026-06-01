@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import collections
 import math
+import sys
 from dataclasses import dataclass
 
 MODES = ["raw", "polish", "translate_zh", "translate_ja", "translate_en", "summary"]
@@ -132,8 +133,10 @@ def _draw_icon(d, idx, cx, cy, r, color):
             d.line((cx - r * 0.6, cy + ly * r, cx + r * 0.78, cy + ly * r), fill=color, width=w)
 
 
-def render_menu_image(size, inner, outer, highlight, theme):
-    """纯 PIL 渲染环形菜单 → flatten 到 key 色的 RGB 图(不依赖 Tk，可离屏存 PNG 验证)。"""
+def render_menu_image(size, inner, outer, highlight, theme, glass=False):
+    """纯 PIL 渲染环形菜单 → flatten 到 key 色的 RGB 图(不依赖 Tk，可离屏存 PNG 验证)。
+    glass=True：静止瓣不填色、留 key(→透出毛玻璃磨砂)，只描边定形 → 整个控制器底儿都是玻璃；
+    仅高亮瓣填实色突出。配合窗口亚克力 + set_opacity(key) 使用。"""
     from PIL import Image, ImageDraw, ImageFilter
     S = _SS
     W = size * S
@@ -145,7 +148,13 @@ def render_menu_image(size, inner, outer, highlight, theme):
     base = Image.new("RGBA", (W, W), (0, 0, 0, 0))
 
     rest = [i for i in range(6) if i != hi]
-    if rest:
+    if glass:                                            # 玻璃：静止瓣留空(→key→磨砂)，仅描边定形
+        od = ImageDraw.Draw(base)
+        for i in rest:
+            a0, a1 = i * 60 + g, i * 60 + 60 - g
+            pts = _arc_pts(cx, cy, ro, a0, a1) + _arc_pts(cx, cy, ri, a1, a0)
+            od.line(pts + [pts[0]], fill=_rgb(theme["accent"]), width=int(2.4 * S), joint="curve")
+    elif rest:
         rmask = _seg_mask(W, cx, cy, ri, ro, rest, g, S)
         solid = Image.new("RGBA", (W, W), _rgb(theme["wedge"]) + (255,))
         base = Image.composite(solid, base, rmask)
@@ -168,13 +177,154 @@ def render_menu_image(size, inner, outer, highlight, theme):
                    _rgb(theme["label_hi"] if on else theme["label"]))
     hr = (inner - 6) * S                                 # 中心 hub：放大显示当前选中图标(未选=直接打字)
     d.ellipse((cx - hr, cy - hr, cx + hr, cy + hr),
-              fill=_rgb(theme["hub"]), outline=_rgb(theme["accent"]), width=int(2 * S))
+              fill=(None if glass else _rgb(theme["hub"])),   # 玻璃：hub 也留空→磨砂
+              outline=_rgb(theme["accent"]), width=int(2 * S))
     _draw_icon(d, hi if hi is not None else 0, cx, cy, 22 * S, _rgb(theme["hub_text"]))
 
     base = base.resize((size, size), Image.LANCZOS)      # 缩小 = 抗锯齿
     flat = Image.new("RGB", (size, size), _rgb(theme["key"]))
     flat.paste(base, (0, 0), base)                       # 四角=key，随后被 -transparentcolor 抠透
     return flat
+
+
+def make_frost(shot_rgb, blur=18, saturate=1.8, tint=(22, 24, 42, 120)):
+    """把"菜单背后的屏幕截图"做成苹果风磨砂底：高斯模糊 + 提饱和(saturate 180%) + 暗蓝 tint。
+    tint 的 alpha 越大越暗(白描边/图标越清晰)、越小越透。返回 RGBA。"""
+    from PIL import Image, ImageEnhance, ImageFilter
+    f = shot_rgb.convert("RGB").filter(ImageFilter.GaussianBlur(blur))
+    f = ImageEnhance.Color(f).enhance(saturate).convert("RGBA")
+    return Image.alpha_composite(f, Image.new("RGBA", f.size, tuple(tint)))
+
+
+def _wedge_shape(size, indices, inner, outer, ss=3, fillet_px=2.8, band_px=1.7):
+    """给定瓣的(填充mask, 描边mask)，均圆角(blur+阈值)、描边由腐蚀得到 → 与磨砂边完全贴合、全圆角。"""
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+    W = size * ss
+    cx = cy = W / 2
+    ri, ro = inner * ss, outer * ss
+    g = 4
+    m = Image.new("L", (W, W), 0)
+    d = ImageDraw.Draw(m)
+    for i in indices:
+        a0, a1 = i * 60 + g, i * 60 + 60 - g
+        pts = _arc_pts(cx, cy, ro, a0, a1) + _arc_pts(cx, cy, ri, a1, a0)
+        d.polygon(pts, fill=255)
+    m = m.filter(ImageFilter.GaussianBlur(fillet_px * ss)).point(lambda v: 255 if v >= 128 else 0)  # 圆角
+    k = int(round(band_px * ss)) * 2 + 1                  # 腐蚀核(奇)
+    edge = ImageChops.subtract(m, m.filter(ImageFilter.MinFilter(k)))
+    return m.resize((size, size), Image.LANCZOS), edge.resize((size, size), Image.LANCZOS)
+
+
+def _disc_mask(size, r, ss=3):
+    from PIL import Image, ImageDraw
+    W = size * ss
+    cx = cy = W / 2
+    rr = r * ss
+    m = Image.new("L", (W, W), 0)
+    ImageDraw.Draw(m).ellipse((cx - rr, cy - rr, cx + rr, cy + rr), fill=255)
+    return m.resize((size, size), Image.LANCZOS)
+
+
+def _tint_layer(rgb, alpha_mask, scale=1.0):
+    """实色 rgb、alpha=alpha_mask*scale 的 RGBA 层(用掩膜上色，边缘随掩膜抗锯齿)。"""
+    from PIL import Image
+    layer = Image.new("RGBA", alpha_mask.size, tuple(rgb) + (0,))
+    layer.putalpha(alpha_mask if scale == 1.0 else alpha_mask.point(lambda v: int(v * scale)))
+    return layer
+
+
+def _glass_icons(size, inner, outer, highlight, ss=3):
+    """白图标 + hub 白圈(超采样抗锯齿)，RGBA 透明底。"""
+    from PIL import Image, ImageDraw
+    W = size * ss
+    cx = cy = W / 2
+    ov = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    WHITE_ICON = (255, 255, 255, 242)
+    Rm = (inner + outer) / 2 * ss
+    for i in range(6):
+        a = math.radians(i * 60 + 30)
+        _draw_icon(d, i, cx + Rm * math.cos(a), cy + Rm * math.sin(a), 17 * ss, WHITE_ICON)
+    hr = (inner - 6) * ss
+    d.ellipse((cx - hr, cy - hr, cx + hr, cy + hr), outline=(255, 255, 255, 170), width=int(2 * ss))
+    _draw_icon(d, highlight if highlight is not None else 0, cx, cy, 22 * ss, WHITE_ICON)
+    return ov.resize((size, size), Image.LANCZOS)
+
+
+def compose_menu_glass(frost_rgba, inner, outer, highlight):
+    """花瓣形磨砂(全圆角) + 玻璃内容(白描边/白图标/periwinkle高亮) → RGBA(瓣外透明)。
+    交 glass_window.show_layered_image 逐像素 alpha 显示 → 只花瓣处磨砂、其余透出真实桌面、全圆角无毛边。
+    描边由圆角 mask 腐蚀得到 → 与磨砂边完全贴合、不会戳出尖角。"""
+    from PIL import Image, ImageChops, ImageFilter
+    size = frost_rgba.width
+    rest = [i for i in range(6) if i != highlight]
+    rfill, redge = _wedge_shape(size, rest, inner, outer)
+    petal_alpha = ImageChops.lighter(rfill, _disc_mask(size, inner - 2))   # 静止瓣 + 中心 hub 盘
+    hfill = hedge = None
+    if highlight is not None:
+        hfill, hedge = _wedge_shape(size, [highlight], inner, outer + 8)    # 高亮瓣外凸 8px
+        petal_alpha = ImageChops.lighter(petal_alpha, hfill)
+
+    frosted = frost_rgba.copy()
+    frosted.putalpha(petal_alpha)                                  # 仅花瓣+hub 磨砂，其余 alpha=0
+    out = frosted
+    if hfill is not None:                                          # 高亮柔光辉 + periwinkle 半透填充
+        out = Image.alpha_composite(out, _tint_layer((166, 179, 248),
+                                                     hfill.filter(ImageFilter.GaussianBlur(7)), 0.5))
+        out = Image.alpha_composite(out, _tint_layer((166, 179, 248), hfill, 0.40))
+    out = Image.alpha_composite(out, _tint_layer((255, 255, 255), redge, 0.60))    # 静止瓣白描边
+    if hedge is not None:
+        out = Image.alpha_composite(out, _tint_layer((210, 218, 255), hedge, 0.95))  # 高亮亮描边
+    return Image.alpha_composite(out, _glass_icons(size, inner, outer, highlight))    # 白图标 + hub 圈
+
+
+def _frost_card_mask(W, H, radius=18, ss=3):
+    """浮窗圆角卡片形 alpha 掩膜(卡外=0)。"""
+    from PIL import Image, ImageDraw
+    Wp, Hp = W * ss, H * ss
+    m = Image.new("L", (Wp, Hp), 0)
+    ImageDraw.Draw(m).rounded_rectangle((ss, ss, Wp - ss, Hp - ss), radius=radius * ss, fill=255)
+    return m.resize((W, H), Image.LANCZOS)
+
+
+def render_hud_glass_content(W, H, mode, frame, levels=None, progress=0.0, done=False, ss=3):
+    """浮窗玻璃版"内容层"(白/periwinkle 声波 或 流动进度条)，透明底，叠到磨砂圆角卡片上。"""
+    from PIL import Image, ImageDraw
+    Wp, Hp = W * ss, H * ss
+    img = Image.new("RGBA", (Wp, Hp), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    ACC = (180, 191, 250, 240)                           # periwinkle 亮(与轮盘高亮同系)
+    midy = Hp * 0.5
+    if mode == "process":
+        pad = 20 * ss
+        bx0, bx1, bh = pad, Wp - pad, 8 * ss
+        cyk = midy - 13 * ss
+        d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=(255, 255, 255, 60))
+        if done:
+            d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=ACC)
+            k = 5 * ss
+            d.line([(Wp / 2 - k, cyk), (Wp / 2 - k * 0.2, cyk + k * 0.7), (Wp / 2 + k, cyk - k * 0.7)],
+                   fill=(255, 255, 255, 245), width=max(2, int(2 * ss)), joint="curve")
+        else:
+            seg = (bx1 - bx0) * 0.32
+            t = 0.5 - 0.5 * math.cos(frame * 0.12)
+            sx = bx0 + (bx1 - bx0 - seg) * t
+            d.rounded_rectangle((sx, midy - bh / 2, sx + seg, midy + bh / 2), radius=bh / 2, fill=ACC)
+    else:                                                # listen：滚动声波
+        vals = list(levels or [])
+        nb, pad = 20, 14 * ss
+        span = Wp - 2 * pad
+        slot = span / nb
+        bw = slot * 0.55
+        vals = [0.0] * (nb - len(vals)) + vals[-nb:]
+        maxh = 0.34 * Hp
+        for i, v in enumerate(vals):
+            idle = 0.10 * (0.5 + 0.5 * math.sin(frame * 0.3 + i * 0.5))
+            vv = max(idle, min(1.0, v))
+            x = pad + slot * (i + 0.5)
+            h = 2 * ss + (maxh - 2 * ss) * vv
+            d.rounded_rectangle((x - bw / 2, midy - h, x + bw / 2, midy + h), radius=bw / 2, fill=ACC)
+    return img.resize((W, H), Image.LANCZOS)
 
 
 def render_hud_image(W, H, mode, frame, theme, levels=None, progress=0.0, done=False, ss=3):
@@ -278,23 +428,36 @@ class RadialMenu:
         self._img_item = None
         self.theme = theme_of(cfg)
         self._key = self.theme["key"]
+        self._glass = bool(mm.get("glass", False)) and sys.platform == "win32"   # 毛玻璃(逐像素 alpha)
+        self._glass_tint = (22, 24, 42, int(mm.get("glass_tint_alpha", 78)))      # 暗蓝 tint(越小越透)
+        self._frost = None                          # 缓存的磨砂底(show 时截屏一次，高亮变化复用)
+        self._left = self._top = 0
         self.geom = MenuGeometry(0.0, 0.0, self._inner, self._outer)
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
-        try:
-            self.root.attributes("-transparentcolor", self._key)
-        except Exception:
-            pass
-        try:
-            self.root.attributes("-alpha", 0.96)   # 整体微透(轻盈、不死板)
-        except Exception:
-            pass
-        self.root.configure(bg=self._key)
-        self._canvas = tk.Canvas(self.root, width=self._size, height=self._size,
-                                 bg=self._key, highlightthickness=0, bd=0)
-        self._canvas.pack()
+        if self._glass:                             # 玻璃：层窗(无 canvas)，先置 LAYERED 防黑闪
+            self.root.geometry(f"{self._size}x{self._size}+0+0")
+            self.root.update_idletasks()
+            try:
+                from desktop import glass_window
+                glass_window.set_layered(self.root.winfo_id())
+            except Exception:
+                self._glass = False
+        if not self._glass:                         # 回退：transparentcolor + alpha + canvas(v3)
+            try:
+                self.root.attributes("-transparentcolor", self._key)
+            except Exception:
+                pass
+            try:
+                self.root.attributes("-alpha", 0.96)
+            except Exception:
+                pass
+            self.root.configure(bg=self._key)
+            self._canvas = tk.Canvas(self.root, width=self._size, height=self._size,
+                                     bg=self._key, highlightthickness=0, bd=0)
+            self._canvas.pack()
         self.root.withdraw()
 
     def pump(self) -> None:
@@ -307,20 +470,48 @@ class RadialMenu:
         self.geom.center_x, self.geom.center_y = float(x), float(y)
         self._highlight = None
         left, top = int(x - self._size / 2), int(y - self._size / 2)
+        self._left, self._top = left, top
         self.root.geometry(f"{self._size}x{self._size}+{left}+{top}")
+        if self._glass:
+            self._grab_frost()         # 窗口仍 withdraw → 干净截取背后桌面做磨砂底
         self._save_focus()
         self.root.deiconify()
         self.root.update_idletasks()
         self._apply_noactivate()
-        self._restore_focus()      # 不抢目标窗口焦点 → 松开后 Ctrl+V 落在目标输入框
-        self._draw()
+        if self._glass:
+            self._paint_glass()        # 层窗逐像素 alpha 显示(花瓣磨砂，瓣外透明)
+        else:
+            self._draw()
+        self._restore_focus()          # 不抢目标窗口焦点 → 松开后 Ctrl+V 落在目标输入框
         self._visible = True
+
+    def _grab_frost(self) -> None:
+        from PIL import Image, ImageGrab
+        box = (self._left, self._top, self._left + self._size, self._top + self._size)
+        try:
+            shot = ImageGrab.grab(bbox=box, all_screens=True)
+        except Exception:
+            try:
+                shot = ImageGrab.grab(bbox=box)
+            except Exception:
+                shot = Image.new("RGB", (self._size, self._size), (28, 30, 46))
+        self._frost = make_frost(shot, tint=self._glass_tint)
+
+    def _paint_glass(self) -> None:
+        if self._frost is None:
+            return
+        try:
+            from desktop import glass_window
+            img = compose_menu_glass(self._frost, self._inner, self._outer, self._highlight)
+            glass_window.show_layered_image(self.root.winfo_id(), img, self._left, self._top)
+        except Exception:
+            pass
 
     def highlight(self, seg: int | None) -> None:
         if seg != self._highlight:
             self._highlight = seg
             if self._visible:
-                self._draw()
+                self._paint_glass() if self._glass else self._draw()
 
     def hit_test(self, x: int, y: int) -> int | None:
         return self.geom.hit_test(x, y)
@@ -388,26 +579,39 @@ class StatusHud:
 
     _SS = 3   # HUD 每帧重绘 → 超采样小一点省开销
 
-    def __init__(self, root, theme: dict) -> None:
+    def __init__(self, root, theme: dict, glass: bool = False, glass_tint=(22, 24, 42, 78)) -> None:
         import tkinter as tk
         self._t = theme
         self._key = theme["key"]
         self._W, self._H = 178, 62
+        self._glass = bool(glass) and sys.platform == "win32"
+        self._glass_tint = tuple(glass_tint)
+        self._frost_card = None
+        self._x = self._y = 0
         self._win = tk.Toplevel(root)
         self._win.overrideredirect(True)
         self._win.attributes("-topmost", True)
-        try:
-            self._win.attributes("-transparentcolor", self._key)
-        except Exception:
-            pass
-        try:
-            self._win.attributes("-alpha", 0.97)
-        except Exception:
-            pass
-        self._win.configure(bg=self._key)
-        self._c = tk.Canvas(self._win, width=self._W, height=self._H,
-                            bg=self._key, highlightthickness=0, bd=0)
-        self._c.pack()
+        if self._glass:                          # 玻璃：层窗(无 canvas)，先置 LAYERED 防黑闪
+            self._win.geometry(f"{self._W}x{self._H}+0+0")
+            self._win.update_idletasks()
+            try:
+                from desktop import glass_window
+                glass_window.set_layered(self._win.winfo_id())
+            except Exception:
+                self._glass = False
+        if not self._glass:
+            try:
+                self._win.attributes("-transparentcolor", self._key)
+            except Exception:
+                pass
+            try:
+                self._win.attributes("-alpha", 0.97)
+            except Exception:
+                pass
+            self._win.configure(bg=self._key)
+            self._c = tk.Canvas(self._win, width=self._W, height=self._H,
+                                bg=self._key, highlightthickness=0, bd=0)
+            self._c.pack()
         self._win.withdraw()
         self._visible = False
         self._mode = "listen"             # listen(声波) | process(进度条)
@@ -424,17 +628,19 @@ class StatusHud:
     def _position_and_show(self) -> None:
         cx, cy = cursor_xy()
         x, y = cx + 18, cy + 22
-        self._win.geometry(f"+{x}+{y}")
-        saved = self._foreground()
-        self._win.deiconify()
-        self._win.update_idletasks()
-        try:                                   # 防超出屏幕
+        try:                                   # 先夹到屏内(deiconify 前定位 → 玻璃才能干净截背景)
             sw, sh = self._win.winfo_screenwidth(), self._win.winfo_screenheight()
             x = max(4, min(x, sw - self._W - 4))
             y = max(4, min(y, sh - self._H - 4))
-            self._win.geometry(f"+{x}+{y}")
         except Exception:
             pass
+        self._x, self._y = x, y
+        self._win.geometry(f"{self._W}x{self._H}+{x}+{y}")
+        if self._glass:
+            self._grab_frost()                 # 窗口仍 withdraw → 干净截背后桌面做磨砂卡片
+        saved = self._foreground()
+        self._win.deiconify()
+        self._win.update_idletasks()
         self._apply_noactivate()
         self._set_foreground(saved)
         self._visible = True
@@ -490,6 +696,9 @@ class StatusHud:
             pass
 
     def _draw(self) -> None:
+        if self._glass:
+            self._draw_glass()
+            return
         from PIL import ImageTk
         flat = render_hud_image(self._W, self._H, self._mode, self._frame, self._t,
                                 levels=list(self._levels), progress=self._progress,
@@ -499,6 +708,34 @@ class StatusHud:
             self._img_item = self._c.create_image(0, 0, anchor="nw", image=self._photo)
         else:
             self._c.itemconfig(self._img_item, image=self._photo)
+
+    def _grab_frost(self) -> None:
+        from PIL import Image, ImageGrab
+        box = (self._x, self._y, self._x + self._W, self._y + self._H)
+        try:
+            shot = ImageGrab.grab(bbox=box, all_screens=True)
+        except Exception:
+            try:
+                shot = ImageGrab.grab(bbox=box)
+            except Exception:
+                shot = Image.new("RGB", (self._W, self._H), (28, 30, 46))
+        frost = make_frost(shot, tint=self._glass_tint)
+        frost.putalpha(_frost_card_mask(self._W, self._H))     # 裁成圆角卡片(卡外透明)
+        self._frost_card = frost
+
+    def _draw_glass(self) -> None:
+        if self._frost_card is None:
+            return
+        try:
+            from PIL import Image
+            from desktop import glass_window
+            content = render_hud_glass_content(self._W, self._H, self._mode, self._frame,
+                                               levels=list(self._levels), progress=self._progress,
+                                               done=self._done, ss=self._SS)
+            img = Image.alpha_composite(self._frost_card, content)
+            glass_window.show_layered_image(self._win.winfo_id(), img, self._x, self._y)
+        except Exception:
+            pass
 
     def _foreground(self):
         try:
