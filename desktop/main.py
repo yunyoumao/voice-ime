@@ -183,8 +183,8 @@ async def run() -> None:
             menu = None
         if menu is not None:
             try:
-                hud = StatusHud(menu.root, menu.theme,   # 浮窗本轮先用稳定 v3(glass=False)；菜单玻璃确认稳后再上浮窗原生玻璃
-                                glass=False,
+                hud = StatusHud(menu.root, menu.theme,   # 浮窗玻璃跟随菜单开关：菜单玻璃成功→浮窗也用同款原生玻璃；否则回退 v3
+                                glass=getattr(menu, "_glass", False),
                                 glass_tint=getattr(menu, "_glass_tint", (22, 24, 42, 78)))
             except Exception:
                 hud = None
@@ -358,6 +358,8 @@ async def run() -> None:
             gesture.stop()
         if pump_task is not None:
             pump_task.cancel()
+        if hud is not None:
+            hud.close()
         if menu is not None:
             menu.close()
         try:

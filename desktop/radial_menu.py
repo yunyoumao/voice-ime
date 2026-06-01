@@ -582,14 +582,13 @@ class RadialMenu:
         if self._glass and self._glass_hwnd:
             try:
                 from desktop import glass_window
-                glass_window.destroy_glass_window()
+                glass_window.destroy_glass_window(self._glass_hwnd)
             except Exception:
                 pass
-        else:
-            try:
-                self.root.destroy()
-            except Exception:
-                pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
 
     # ---------------- 渲染(PIL 抗锯齿) ----------------
     def _draw(self) -> None:
@@ -650,12 +649,13 @@ class StatusHud:
         self._win = tk.Toplevel(root)
         self._win.overrideredirect(True)
         self._win.attributes("-topmost", True)
-        if self._glass:                          # 玻璃：层窗(无 canvas)，先置 LAYERED 防黑闪
-            self._win.geometry(f"{self._W}x{self._H}+0+0")
-            self._win.update_idletasks()
+        self._hud_hwnd = None
+        if self._glass:                          # 玻璃：独立原生层窗显示(tkinter 不碰它→不被重绘擦掉，同菜单)
             try:
                 from desktop import glass_window
-                glass_window.set_layered(self._win.winfo_id())
+                self._hud_hwnd = glass_window.create_glass_window()
+                glass_window.set_layered(self._hud_hwnd)
+                glass_window.apply_noactivate(self._hud_hwnd)
             except Exception:
                 self._glass = False
         if not self._glass:
@@ -694,14 +694,17 @@ class StatusHud:
         except Exception:
             pass
         self._x, self._y = x, y
-        self._win.geometry(f"{self._W}x{self._H}+{x}+{y}")
-        if self._glass:
-            self._grab_frost()                 # 窗口仍 withdraw → 干净截背后桌面做磨砂卡片
-        saved = self._foreground()
-        self._win.deiconify()
-        self._win.update_idletasks()
-        self._apply_noactivate()
-        self._set_foreground(saved)
+        if self._glass and self._hud_hwnd:        # 原生玻璃窗：截背景→显示窗(内容随后由 _draw 贴)
+            from desktop import glass_window
+            self._grab_frost()
+            glass_window.show_glass_window(self._hud_hwnd, x, y, self._W, self._H)
+        else:                                     # 非玻璃：tkinter Toplevel(transparentcolor)
+            self._win.geometry(f"{self._W}x{self._H}+{x}+{y}")
+            saved = self._foreground()
+            self._win.deiconify()
+            self._win.update_idletasks()
+            self._apply_noactivate()
+            self._set_foreground(saved)
         self._visible = True
 
     def show_listen(self) -> None:
@@ -752,8 +755,27 @@ class StatusHud:
         if not self._visible:
             return
         self._visible = False
+        if self._glass and self._hud_hwnd:
+            try:
+                from desktop import glass_window
+                glass_window.hide_glass_window(self._hud_hwnd)
+            except Exception:
+                pass
+        else:
+            try:
+                self._win.withdraw()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        if self._glass and self._hud_hwnd:
+            try:
+                from desktop import glass_window
+                glass_window.destroy_glass_window(self._hud_hwnd)
+            except Exception:
+                pass
         try:
-            self._win.withdraw()
+            self._win.destroy()
         except Exception:
             pass
 
@@ -786,7 +808,7 @@ class StatusHud:
         self._frost_card = frost
 
     def _draw_glass(self) -> None:
-        if self._frost_card is None:
+        if self._frost_card is None or not self._hud_hwnd:
             return
         try:
             from PIL import Image
@@ -795,7 +817,7 @@ class StatusHud:
                                                levels=list(self._levels), progress=self._progress,
                                                done=self._done, ss=self._SS)
             img = Image.alpha_composite(self._frost_card, content)
-            glass_window.show_layered_image(self._win.winfo_id(), img, self._x, self._y)
+            glass_window.show_layered_image(self._hud_hwnd, img, self._x, self._y)
         except Exception:
             pass
 

@@ -472,7 +472,7 @@ if __name__ == '__main__':
 # 独立原生层窗(防 tkinter 重绘擦图)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-_native_glass_hwnd = None
+_native_glass_hwnds = set()   # 已创建的原生玻璃窗集合(支持多个：菜单一个、浮窗一个)
 _native_glass_class = None
 _wnd_proc_ref = None
 
@@ -547,11 +547,7 @@ def _register_glass_window_class():
 
 
 def create_glass_window() -> int:
-    """创建独立的原生 LAYERED 窗口。返回 HWND(int)。"""
-    global _native_glass_hwnd
-    if _native_glass_hwnd:
-        return _native_glass_hwnd
-    
+    """创建一个独立的原生 LAYERED 窗口。返回 HWND(int)。可多次调用(菜单/浮窗各持有一个)。"""
     if sys.platform != 'win32':
         raise RuntimeError("create_glass_window: 仅支持 Windows")
     
@@ -589,9 +585,10 @@ def create_glass_window() -> int:
     
     if not hwnd:
         raise RuntimeError("CreateWindowExW failed")
-    
-    _native_glass_hwnd = int(hwnd)
-    return _native_glass_hwnd
+
+    h = int(hwnd)
+    _native_glass_hwnds.add(h)
+    return h
 
 
 def show_glass_window(hwnd: int, x: int, y: int, w: int, h: int) -> bool:
@@ -632,17 +629,19 @@ def hide_glass_window(hwnd: int) -> bool:
         return False
 
 
-def destroy_glass_window():
-    """销毁全局原生窗。"""
-    global _native_glass_hwnd
-    if not _native_glass_hwnd:
+def destroy_glass_window(hwnd=None):
+    """销毁原生窗：传 hwnd 只销毁那一个；不传则销毁全部(退出清理)。"""
+    if sys.platform != 'win32':
         return
-    
+    targets = [int(hwnd)] if hwnd else list(_native_glass_hwnds)
     try:
         u = ctypes.windll.user32
         u.DestroyWindow.argtypes = [ctypes.c_void_p]
-        u.DestroyWindow(ctypes.c_void_p(int(_native_glass_hwnd)))
+        for h in targets:
+            try:
+                u.DestroyWindow(ctypes.c_void_p(h))
+            except Exception:
+                pass
+            _native_glass_hwnds.discard(h)
     except Exception:
         pass
-    finally:
-        _native_glass_hwnd = None
