@@ -184,7 +184,7 @@ async def run() -> None:
         if menu is not None:
             try:
                 hud = StatusHud(menu.root, menu.theme,   # 浮窗玻璃跟随菜单开关：菜单玻璃成功→浮窗也用同款原生玻璃；否则回退 v3
-                                glass=getattr(menu, "_glass", False),
+                                glass=menu.use_glass(),
                                 glass_tint=getattr(menu, "_glass_tint", (22, 24, 42, 78)))
             except Exception:
                 hud = None

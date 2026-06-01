@@ -590,6 +590,10 @@ class RadialMenu:
         except Exception:
             pass
 
+    def use_glass(self) -> bool:
+        """毛玻璃是否实际启用(原生窗创建成功)。供浮窗等跟随同一开关，避免外部探测私有属性。"""
+        return bool(self._glass)
+
     # ---------------- 渲染(PIL 抗锯齿) ----------------
     def _draw(self) -> None:
         from PIL import ImageTk
