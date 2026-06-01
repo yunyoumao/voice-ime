@@ -39,6 +39,16 @@ output:
 overlay:
   enabled: true
 
+# 鼠标中键环形菜单（toggle）：按住中键弹菜单+开录 → 拖到某瓣松手=锁定该模式、菜单消失、
+# 继续免持录音 → 再点一下中键=停止并上屏。松手在中心死区/环外=取消。
+# 6 瓣：直接打字/语音润色/译中/译日/译英/总结。
+mouse_menu:
+  enabled: true
+  button: none            # 鼠标触发键：none(不用鼠标,推荐配 hotkey) | middle | right | left
+  hotkey: "<ctrl_r>"      # 键盘开菜单键(右Ctrl,零冲突)。按住选→松开锁定免持→再点停。空=不用键盘
+  inner_radius: 55        # 中心死区半径(像素)：松开在此圈内=取消
+  outer_radius: 160       # 外环半径(像素)
+
 # ---------------- 处理层：语音 → AI 工作流 ----------------
 pipeline:
   default_mode: polish       # raw(直通) | polish(润色)  ［summary/translate/command 后续上线］

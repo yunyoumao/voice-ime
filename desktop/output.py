@@ -37,10 +37,12 @@ class OutputController:
             except Exception:
                 old = None
         pyperclip.copy(text)
-        time.sleep(0.02)  # 等剪贴板写入生效
+        time.sleep(0.04)  # 等剪贴板写入生效
         self._send_paste()
         if self.restore and old is not None:
-            time.sleep(0.05)
+            # 等目标程序真正读完剪贴板再恢复——Excel 等读得慢，恢复太快会粘成旧内容（竞态）。
+            # 这段延迟在 Ctrl+V 之后、不影响你看到文字的速度（恢复是后台静默做的）。
+            time.sleep(0.4)
             pyperclip.copy(old)
 
     def _send_paste(self) -> None:

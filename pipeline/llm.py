@@ -13,6 +13,8 @@ import asyncio
 import json
 import os
 import subprocess
+import time
+import urllib.error
 import urllib.request
 
 
@@ -38,6 +40,8 @@ class LLMClient:
     def _chat_sync(self, system: str, user: str) -> str:
         if self.provider == "openai":
             return self._openai(system, user)
+        if self.provider in ("glm-http", "glm", "glm-direct"):
+            return self._glm_http(system, user)
         return self._glm_cli(system, user)
 
     def _glm_cli(self, system: str, user: str) -> str:
@@ -51,6 +55,38 @@ class LLMClient:
             raise RuntimeError(f"ask_glm.py 退出码 {proc.returncode}: {proc.stderr[:200]}")
         data = json.loads(proc.stdout)
         return (data.get("text") or "").strip()
+
+    def _glm_http(self, system: str, user: str) -> str:
+        # 直连智谱 anthropic 端点：无子进程（省 ~0.5s/次）、不依赖系统 Python 路径。
+        # key 取环境变量 ZHIPU_API_KEY / ANTHROPIC_AUTH_TOKEN（与 ask_glm.py 同源）。
+        key = (os.environ.get("ZHIPU_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
+        if not key:
+            raise RuntimeError("未找到 GLM key（环境变量 ZHIPU_API_KEY 或 ANTHROPIC_AUTH_TOKEN）")
+        body = {"model": self.glm_model, "max_tokens": 1024,
+                "messages": [{"role": "user", "content": user}]}
+        if system:
+            body["system"] = system
+        data = json.dumps(body).encode("utf-8")
+        headers = {"Content-Type": "application/json", "x-api-key": key,
+                   "anthropic-version": "2023-06-01"}
+        url = "https://open.bigmodel.cn/api/anthropic/v1/messages"
+        last = None
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, data=data, headers=headers)
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    d = json.loads(resp.read())
+                return "\n".join(c.get("text", "") for c in d.get("content", [])
+                                 if c.get("type") == "text").strip()
+            except urllib.error.HTTPError as e:
+                last = e
+                if e.code != 429 and not (500 <= e.code < 600):
+                    raise
+                time.sleep(1.0 * (attempt + 1))   # 429/5xx 退避重试
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                last = e
+                time.sleep(0.5 * (attempt + 1))
+        raise last if last else RuntimeError("glm-http 调用失败")
 
     def _openai(self, system: str, user: str) -> str:
         body = json.dumps({

@@ -35,8 +35,13 @@ class Pipeline:
         self._mode_to_sink = mode_to_sink
         self._default_mode = default_mode if default_mode in processors else "raw"
 
-    async def run(self, raw_text: str) -> Result:
-        mode, text = self._router.route(raw_text)
+    async def run(self, raw_text: str, force_mode: str | None = None) -> Result:
+        # force_mode（鼠标手势选定的模式）命中则跳过前缀路由，直接用它处理原文；
+        # 默认 None → 维持前缀词路由（热键/口述路径不受影响）。
+        if force_mode is not None and force_mode in self._processors:
+            mode, text = force_mode, raw_text
+        else:
+            mode, text = self._router.route(raw_text)
         processor = self._processors.get(mode)
         if processor is None:
             # 路由到尚未实现的模式 → 回退默认模式，处理原始整句
