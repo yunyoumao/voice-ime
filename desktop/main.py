@@ -214,14 +214,11 @@ async def run() -> None:
 
             mk = (cfg.get("mouse_menu") or {}).get("hotkey")
             if mk:                                     # 键盘键触发（零冲突）：挂到同一个键盘监听(add_binding)
-                def _menu_down() -> None:
-                    print("   [键诊断] 菜单键 on_start 触发", flush=True)
-                    loop.call_soon_threadsafe(g_press, *cursor_xy())
                 hotkey.add_binding(
-                    mk, "hold", _menu_down,
+                    mk, "hold",
+                    lambda: loop.call_soon_threadsafe(g_press, *cursor_xy()),
                     lambda: loop.call_soon_threadsafe(g_release, *cursor_xy()),
                 )
-                print(f"   [键诊断] 已注册热键目标 = {[sorted(b['target']) for b in hotkey._binds]}", flush=True)
 
             async def _pump_tk() -> None:
                 while True:

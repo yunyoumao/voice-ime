@@ -23,9 +23,12 @@ from pynput import keyboard
 def _ident(key, listener: keyboard.Listener | None = None):
     """把按键规范成可 hash 的标识（vk 整数优先，其次 char），消除 Key 枚举 /
     KeyCode / 左右键表示差异。"""
-    if listener is not None:
+    # ⚠️ canonical() 只该对字符键做布局还原；对修饰键(Key 枚举)它会把左右键塌缩成通用键
+    #    （ctrl_r 163→ctrl 17、alt_r 165→alt 18），破坏左右区分 → <ctrl_r> 这类热键永远匹配不上。
+    #    故仅对非 Key（字符键 KeyCode）做 canonical。
+    if listener is not None and not isinstance(key, keyboard.Key):
         try:
-            key = listener.canonical(key)   # 还原键盘布局（主要对字符键）
+            key = listener.canonical(key)
         except Exception:
             pass
     vk = getattr(key, "vk", None)
@@ -66,9 +69,7 @@ class HotkeyListener:
         })
 
     def _handle_press(self, key) -> None:  # noqa: ANN001
-        kid = _ident(key, self._listener)
-        self._pressed.add(kid)
-        print(f"   [键诊断] 按下 {kid}", flush=True)   # 临时：定位右Ctrl菜单键
+        self._pressed.add(_ident(key, self._listener))
         for b in self._binds:
             if not b["target"].issubset(self._pressed):
                 continue
