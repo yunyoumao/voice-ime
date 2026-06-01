@@ -89,7 +89,7 @@ class RadialMenu:
         mm = (cfg or {}).get("mouse_menu", {}) or {}
         self._inner = float(mm.get("inner_radius", 55))
         self._outer = float(mm.get("outer_radius", 160))
-        self._size = int(self._outer * 2 + 8)
+        self._size = int(self._outer * 2 + 28)   # 留余量给高亮段向外凸出
         self._highlight: int | None = None
         self._visible = False
         self._saved_hwnd = None
@@ -101,6 +101,10 @@ class RadialMenu:
         self.root.attributes("-topmost", True)
         try:
             self.root.attributes("-transparentcolor", _KEY)
+        except Exception:
+            pass
+        try:
+            self.root.attributes("-alpha", 0.94)   # 整体微透(游戏轮盘的半透感)
         except Exception:
             pass
         self.root.configure(bg=_KEY)
@@ -158,24 +162,31 @@ class RadialMenu:
         t, c = self.theme, self._canvas
         c.delete("all")
         cx = cy = self._size / 2
-        R = (self._inner + self._outer) / 2          # 环带中线半径
-        bw = self._outer - self._inner               # 环带厚度
+        g = 5                                         # 段间缝(度) → 6 段严格等分、清爽
         for i in range(6):
             hi = (i == self._highlight)
-            a0, a1 = i * 60 + 9, i * 60 + 51          # 段间留 18° 缝
+            ro = self._outer + (10 if hi else 0)      # 高亮段向外凸出(游戏轮盘选中感)
+            ri = self._inner
+            a0, a1 = i * 60 + g, i * 60 + 60 - g
             pts = []
-            for k in range(11):                       # 沿弧取点 + smooth+圆头 → 圆润环带(非直角扇形)
-                ang = math.radians(a0 + (a1 - a0) * k / 10)
-                pts += [cx + R * math.cos(ang), cy + R * math.sin(ang)]
-            c.create_line(*pts, width=bw, smooth=True, capstyle="round", joinstyle="round",
-                          fill=t["wedge_hi"] if hi else t["wedge"])
-        for i, label in enumerate(LABELS):            # 标签居中于环带
+            for k in range(13):                       # 外弧
+                ang = math.radians(a0 + (a1 - a0) * k / 12)
+                pts += [cx + ro * math.cos(ang), cy + ro * math.sin(ang)]
+            for k in range(13):                       # 内弧(回扫) → 闭合成环段
+                ang = math.radians(a1 - (a1 - a0) * k / 12)
+                pts += [cx + ri * math.cos(ang), cy + ri * math.sin(ang)]
+            # smooth 多边形：四角自动圆润；各段同 60° 槽 → 等分
+            c.create_polygon(*pts, smooth=True, splinesteps=18,
+                             fill=t["wedge_hi"] if hi else t["wedge"],
+                             outline=t["accent"] if hi else "", width=2)
+        R = (self._inner + self._outer) / 2
+        for i, label in enumerate(LABELS):
             hi = (i == self._highlight)
             a = math.radians(i * 60 + 30)
             c.create_text(cx + R * math.cos(a), cy + R * math.sin(a), text=label,
                           fill=t["label_hi"] if hi else t["label"],
                           font=("Microsoft YaHei", 10, "bold" if hi else "normal"))
-        ir = self._inner - 8                          # 中心 hub(圆)：实时显示当前选中(未选=直接打字)
+        ir = self._inner - 6                          # 中心 hub(圆)：实时显示当前选中(未选=直接打字)
         c.create_oval(cx - ir, cy - ir, cx + ir, cy + ir, fill=t["hub"], outline=t["accent"], width=2)
         sel = LABELS[self._highlight] if self._highlight is not None else "直接打字"
         c.create_text(cx, cy, text=sel, fill=t["hub_text"], font=("Microsoft YaHei", 13, "bold"))
@@ -284,15 +295,14 @@ class StatusHud:
         self._round_rect(c, 2, 2, self._W - 2, self._H - 2, 18, fill=t["hud_bg"], outline=t["accent"])
         c.create_text(16, 20, anchor="w", text=self._text, fill=t["hud_text"],
                       font=("Microsoft YaHei", 11, "bold"))
-        bx0, bx1, by = 16, self._W - 16, 43
-        c.create_line(bx0, by, bx1, by, fill=t["track"], width=5, capstyle="round")
-        span = bx1 - bx0
-        seg = 44
-        pos = (self._frame * 5) % (span + seg) - seg     # 流动段扫动(无固定终点的进度指示)
-        x0 = bx0 + max(0, pos)
-        x1 = bx0 + min(span, pos + seg)
-        if x1 > x0:
-            c.create_line(x0, by, x1, by, fill=t["accent"], width=5, capstyle="round")
+        # Siri/EQ 式跳动竖条(音量条纹感)：各条按正弦错相上下跳
+        bars, bw_, gap_, midy, maxh = 13, 3, 5, 44, 11
+        total = bars * bw_ + (bars - 1) * gap_
+        x = (self._W - total) / 2 + bw_ / 2
+        for i in range(bars):
+            h = 3 + (maxh - 3) * (0.5 + 0.5 * math.sin(self._frame * 0.35 + i * 0.55))
+            c.create_line(x, midy - h, x, midy + h, fill=t["accent"], width=bw_, capstyle="round")
+            x += bw_ + gap_
 
     def _foreground(self):
         try:
