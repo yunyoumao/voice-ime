@@ -99,25 +99,12 @@ class WINDOWCOMPOSITIONATTRIBDATA(ctypes.Structure):
 
 
 def get_windows_version() -> tuple[int, int, int]:
-    """获取 Windows 版本号 (major, minor, build)
-
-    返回：(major, minor, build)
-    - major: 10 或 11
-    - minor: 0 (通常)
-    - build: 如 26200 (Win11 build)
-    """
-    import platform
-
-    release = platform.release()  # '10' 或 '11'
-    version = platform.version()  # 如 '10.0.22621'
-
-    parts = version.split('.')
+    """(major, minor, build)。按 build 判 Win11(build>=22000)——platform.release() 在 Win11 会误报 '10'。"""
     try:
-        major = int(release)
-        minor = 0
-        build = int(parts[2]) if len(parts) > 2 else 0
-        return (major, minor, build)
-    except (ValueError, IndexError):
+        v = sys.getwindowsversion()
+        major = 11 if v.build >= 22000 else v.major
+        return (major, v.minor, v.build)
+    except Exception:
         return (10, 0, 0)
 
 
@@ -292,6 +279,37 @@ def setup_glass_toplevel(
         gradient_color=gradient,
         corner='round' if round_corner else 'sharp'
     )
+
+
+def apply_acrylic(hwnd: int, gradient_abgr: int = 0x66141019) -> bool:
+    """ACCENT_ENABLE_ACRYLICBLURBEHIND + 自定义着色(ABGR：高字节=alpha，越小越透明)。
+    Win10/11 通用，比 DWM SYSTEMBACKDROP 更能精确控制"磨砂浓度/透明度"。"""
+    try:
+        a = ACCENT_POLICY()
+        a.AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND
+        a.AccentFlags = 0
+        a.GradientColor = gradient_abgr
+        a.AnimationId = 0
+        data = WINDOWCOMPOSITIONATTRIBDATA()
+        data.Attribute = WCA_ACCENT_POLICY
+        data.Data = ctypes.addressof(a)
+        data.cbData = ctypes.sizeof(a)
+        ctypes.windll.user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
+        return True
+    except Exception:
+        return False
+
+
+def set_round(hwnd: int, on: bool = True) -> bool:
+    """Win11 圆角窗口(DWMWA_WINDOW_CORNER_PREFERENCE)。pywinstyles 不一定给无边框窗圆角，单独调。"""
+    try:
+        pref = DWMWCP_ROUND if on else DWMWCP_DONOTROUND
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+            ctypes.byref(ctypes.c_int(pref)), ctypes.sizeof(ctypes.c_int))
+        return True
+    except Exception:
+        return False
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -188,21 +188,21 @@ def render_hud_image(W, H, mode, frame, theme, levels=None, progress=0.0, done=F
     d.rounded_rectangle((2 * ss, 2 * ss, Wp - 2 * ss, Hp - 2 * ss), radius=int(18 * ss),
                         fill=_rgb(theme["hud_bg"]), outline=_rgb(theme["accent"]), width=max(1, ss))
     midy = Hp * 0.5
-    if mode == "process":                                # 0→100% 进度条
+    if mode == "process":                                # 处理中：不确定式流动条(不报假百分比，不会卡在92%)
         pad = 20 * ss
         bx0, bx1, bh = pad, Wp - pad, 8 * ss
-        p = 1.0 if done else max(0.04, min(0.99, progress))
-        d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["track"]))
-        d.rounded_rectangle((bx0, midy - bh / 2, bx0 + (bx1 - bx0) * p, midy + bh / 2),
-                            radius=bh / 2, fill=_rgb(theme["accent"]))
         cyk = midy - 13 * ss
-        if done:                                         # 矢量对勾(字体里 ✓ 常缺字→豆腐，手画更稳)
+        d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["track"]))
+        if done:                                         # 完成 → 填满 + 矢量对勾(字体 ✓ 常缺字→手画)
+            d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["accent"]))
             k = 5 * ss
             d.line([(Wp / 2 - k, cyk), (Wp / 2 - k * 0.2, cyk + k * 0.7), (Wp / 2 + k, cyk - k * 0.7)],
                    fill=_rgb(theme["accent"]), width=max(2, int(2 * ss)), joint="curve")
-        else:
-            d.text((Wp / 2, cyk), f"{int(p * 100)}%", font=_font(int(11 * ss), bold=True),
-                   fill=_rgb(theme["hud_text"]), anchor="mm")
+        else:                                            # 一段亮条平滑来回滑 → "正在处理"，真完成时收尾跳满
+            seg = (bx1 - bx0) * 0.32
+            t = 0.5 - 0.5 * math.cos(frame * 0.12)       # 0..1 平滑 ping-pong
+            sx = bx0 + (bx1 - bx0 - seg) * t
+            d.rounded_rectangle((sx, midy - bh / 2, sx + seg, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["accent"]))
     else:                                                # listen：滚动声波(随真实音量起伏)
         vals = list(levels or [])
         nb, pad = 20, 14 * ss
@@ -474,13 +474,10 @@ class StatusHud:
         if not self._visible:
             return
         self._frame += 1
-        if self._mode == "process":
-            if self._done:
-                if self._frame - self._done_frame > 16:    # 满格后约 0.4s 收起
-                    self.hide()
-                    return
-            else:                                          # 渐近逼近 92%，等真完成再跳满(诚实进度)
-                self._progress = min(0.92, (self._frame - self._proc_frame0) / self._estimate_frames)
+        if self._mode == "process" and self._done:
+            if self._frame - self._done_frame > 16:        # 完成填满后约 0.4s 收起
+                self.hide()
+                return
         self._draw()
 
     def hide(self) -> None:
