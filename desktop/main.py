@@ -36,6 +36,7 @@ async def run() -> None:
     mode = str(cfg.get("hotkey_mode", "hold")).lower()
     forced = {"mode": None}   # 手势选定模式：None=走前缀路由, 模式串=强制该模式, _CANCEL=取消
     rec = {"on": False}       # 是否正在录音（worker 据此决定状态浮窗何时隐藏）
+    inflight = {"n": 0}       # 处理管线中未完成的句数（判断"处理中"何时收起）
     hud = None                # 状态浮窗 StatusHud；在菜单块里按需创建
 
     def set_status(s: str) -> None:
@@ -87,6 +88,7 @@ async def run() -> None:
         async def _launcher() -> None:
             while True:
                 text, fmode = await finals.get()
+                inflight["n"] += 1
                 ordered.put_nowait(asyncio.ensure_future(_compute(text, fmode)))
                 finals.task_done()
 
@@ -100,10 +102,17 @@ async def run() -> None:
                     sys.stdout.flush()
                 finally:
                     ordered.task_done()
-                if finals.empty() and ordered.empty() and not rec["on"]:
+                    inflight["n"] = max(0, inflight["n"] - 1)
+                if finals.empty() and inflight["n"] == 0 and not rec["on"]:
                     set_status("off")        # 全部处理完且已停录 → 收起状态浮窗
 
         await asyncio.gather(_launcher(), _emitter())
+
+    def _clear_hud_if_idle() -> None:
+        # 兜底：这次没识别出任何内容(静音/麦没收到音频)时，没有结果触发 worker 收起浮窗 → 这里清，
+        # 避免"处理中"卡住。仅在确无待处理(队列空+无在途)且已停录时才清。
+        if finals.empty() and inflight["n"] == 0 and not rec["on"]:
+            set_status("off")
 
     last_final = {"text": "", "t": 0.0}
 
@@ -271,6 +280,7 @@ async def run() -> None:
                     await asyncio.sleep(0.08)         # 等残留音频帧入队
                     await _drain_audio(engine, events)
                     await engine.stop()
+                    loop.call_later(2.5, _clear_hud_if_idle)   # 没识别出内容时兜底收起"处理中"
                     preroll.clear()                   # 清空，避免话尾混入下次开头
                     level = int(seg_peak * 100 / 32768)
                     hint = "⚠️ 几乎没收到声音 → 查麦克风权限/设备" if level < 2 else "麦克风正常"

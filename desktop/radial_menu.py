@@ -155,27 +155,28 @@ class RadialMenu:
 
     # ---------------- internals ----------------
     def _draw(self) -> None:
-        import tkinter as tk
         t, c = self.theme, self._canvas
         c.delete("all")
         cx = cy = self._size / 2
+        R = (self._inner + self._outer) / 2          # 环带中线半径
+        bw = self._outer - self._inner               # 环带厚度
         for i in range(6):
             hi = (i == self._highlight)
-            # 瓣间留 4° 缝隙(extent 56)，更干净；hit_test 仍按整 60° → 缝隙不影响选择
-            c.create_arc(cx - self._outer, cy - self._outer, cx + self._outer, cy + self._outer,
-                         start=-(i * 60 + 58), extent=56, style=tk.PIESLICE,
-                         fill=t["wedge_hi"] if hi else t["wedge"],
-                         outline=t["accent"] if hi else t["outline"], width=2)
-        rr = (self._inner + self._outer) / 2 + 4
-        for i, label in enumerate(LABELS):
+            a0, a1 = i * 60 + 9, i * 60 + 51          # 段间留 18° 缝
+            pts = []
+            for k in range(11):                       # 沿弧取点 + smooth+圆头 → 圆润环带(非直角扇形)
+                ang = math.radians(a0 + (a1 - a0) * k / 10)
+                pts += [cx + R * math.cos(ang), cy + R * math.sin(ang)]
+            c.create_line(*pts, width=bw, smooth=True, capstyle="round", joinstyle="round",
+                          fill=t["wedge_hi"] if hi else t["wedge"])
+        for i, label in enumerate(LABELS):            # 标签居中于环带
             hi = (i == self._highlight)
             a = math.radians(i * 60 + 30)
-            c.create_text(cx + rr * math.cos(a), cy + rr * math.sin(a), text=label,
+            c.create_text(cx + R * math.cos(a), cy + R * math.sin(a), text=label,
                           fill=t["label_hi"] if hi else t["label"],
                           font=("Microsoft YaHei", 10, "bold" if hi else "normal"))
-        # 中心 hub：实时显示当前选中(未选=直接打字)
-        c.create_oval(cx - self._inner, cy - self._inner, cx + self._inner, cy + self._inner,
-                      fill=t["hub"], outline=t["outline"], width=2)
+        ir = self._inner - 8                          # 中心 hub(圆)：实时显示当前选中(未选=直接打字)
+        c.create_oval(cx - ir, cy - ir, cx + ir, cy + ir, fill=t["hub"], outline=t["accent"], width=2)
         sel = LABELS[self._highlight] if self._highlight is not None else "直接打字"
         c.create_text(cx, cy, text=sel, fill=t["hub_text"], font=("Microsoft YaHei", 13, "bold"))
 
@@ -215,17 +216,21 @@ class StatusHud:
     def __init__(self, root, theme: dict) -> None:
         import tkinter as tk
         self._t = theme
-        self._W, self._H = 168, 58
+        self._W, self._H = 172, 60
         self._win = tk.Toplevel(root)
         self._win.overrideredirect(True)
         self._win.attributes("-topmost", True)
         try:
-            self._win.attributes("-alpha", 0.96)
+            self._win.attributes("-transparentcolor", _KEY)   # 圆角外的角落透明
         except Exception:
             pass
-        self._win.configure(bg=theme["hud_bg"])
+        try:
+            self._win.attributes("-alpha", 0.97)
+        except Exception:
+            pass
+        self._win.configure(bg=_KEY)
         self._c = tk.Canvas(self._win, width=self._W, height=self._H,
-                            bg=theme["hud_bg"], highlightthickness=0, bd=0)
+                            bg=_KEY, highlightthickness=0, bd=0)
         self._c.pack()
         self._win.withdraw()
         self._visible = False
@@ -267,20 +272,27 @@ class StatusHud:
         except Exception:
             pass
 
+    @staticmethod
+    def _round_rect(c, x0, y0, x1, y1, r, **kw):
+        pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1,
+               x1 - r, y1, x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
+        return c.create_polygon(pts, smooth=True, **kw)
+
     def _draw(self) -> None:
         t, c = self._t, self._c
         c.delete("all")
-        c.create_text(14, 18, anchor="w", text=self._text, fill=t["hud_text"],
+        self._round_rect(c, 2, 2, self._W - 2, self._H - 2, 18, fill=t["hud_bg"], outline=t["accent"])
+        c.create_text(16, 20, anchor="w", text=self._text, fill=t["hud_text"],
                       font=("Microsoft YaHei", 11, "bold"))
-        bx0, bx1, by = 14, self._W - 14, 40
-        c.create_line(bx0, by, bx1, by, fill=t["track"], width=4, capstyle="round")
+        bx0, bx1, by = 16, self._W - 16, 43
+        c.create_line(bx0, by, bx1, by, fill=t["track"], width=5, capstyle="round")
         span = bx1 - bx0
-        seg = 42
-        pos = (self._frame * 5) % (span + seg) - seg     # 流动段来回扫
+        seg = 44
+        pos = (self._frame * 5) % (span + seg) - seg     # 流动段扫动(无固定终点的进度指示)
         x0 = bx0 + max(0, pos)
         x1 = bx0 + min(span, pos + seg)
         if x1 > x0:
-            c.create_line(x0, by, x1, by, fill=t["accent"], width=4, capstyle="round")
+            c.create_line(x0, by, x1, by, fill=t["accent"], width=5, capstyle="round")
 
     def _foreground(self):
         try:
