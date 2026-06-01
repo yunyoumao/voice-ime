@@ -46,9 +46,9 @@ class LocalSenseVoiceASR(StreamingASR):
 
         vad_cfg = sherpa_onnx.VadModelConfig()
         vad_cfg.silero_vad.model = vad_path
-        vad_cfg.silero_vad.threshold = 0.5
+        vad_cfg.silero_vad.threshold = 0.35           # 调灵敏：少吞"沁/嘶"这类弱清辅音开头
         vad_cfg.silero_vad.min_silence_duration = 0.25
-        vad_cfg.silero_vad.min_speech_duration = 0.25
+        vad_cfg.silero_vad.min_speech_duration = 0.10  # 允许更短促的字，避免漏掉单字
         vad_cfg.sample_rate = 16000
         self._vad = sherpa_onnx.VoiceActivityDetector(vad_cfg, buffer_size_in_seconds=30)
 

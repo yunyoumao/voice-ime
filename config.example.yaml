@@ -10,12 +10,17 @@
 # - volcano 火山豆包：国内一流中文（需 appid+token）
 engine: local
 
-# 全局热键（按住说话 push-to-talk，松开上屏）
-# 默认 Cmd+Option（macOS 最稳，不与系统快捷键冲突）
-# 备选单键 "<f8>"（若无效，到「系统设置→键盘」开启"将 F1–F12 作为标准功能键"）
-# ⚠️ 勿用 "<ctrl>+<space>" / "<cmd>+<space>"：被 macOS 输入法切换占用
-# ⚠️ 修饰键用通用名 <cmd>/<alt>/<ctrl>/<shift>，勿用 <alt_r> 等左右键（匹配不可靠）
-hotkey: "<cmd>+<alt>"
+# 全局热键（不知道填什么就跑：.venv/bin/python scripts/probe_key.py 按键探测）
+# 默认 <alt_r>＝右 Option：右手大拇指旁、平时不用、零破坏性误触，单手按住最顺
+# 可选：<ctrl> 左 Ctrl（注意 Ctrl+点击=右键、Ctrl+方向=切桌面）
+#       <cmd_r> 右 Cmd ／ <shift_r> 右 Shift
+#       <f8> 功能键（需到「系统设置→键盘」开"将 F1–F12 作为标准功能键"）
+# 组合键用 + 连：如 "<ctrl>+<space>"（⚠️ 勿用 <ctrl>/<cmd>+<space>，被输入法切换占用）
+# ⚠️ Fn / 🌐 键无法使用：pynput 在 macOS 抓不到它（硬件键，不走系统键盘事件）
+hotkey: "<alt_r>"
+
+# 触发方式：hold(按住说话、松开停，默认) | toggle(按一下开始、再按一下停，适合说长段/总结)
+hotkey_mode: hold
 
 # 录音参数（所有引擎统一 16k / 单声道 / PCM16）
 audio:
