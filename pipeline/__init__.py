@@ -6,6 +6,8 @@ from .llm import LLMClient
 from .passthrough import PassthroughProcessor
 from .polish import PolishProcessor
 from .router import Router
+from .summarize import SummarizeProcessor
+from .translate import TranslateProcessor
 
 
 def build_pipeline(cfg: dict) -> Pipeline:
@@ -17,6 +19,10 @@ def build_pipeline(cfg: dict) -> Pipeline:
     processors = {
         "raw": PassthroughProcessor(),
         "polish": PolishProcessor(llm),
+        "translate_zh": TranslateProcessor(llm, "translate_zh", "中文"),
+        "translate_ja": TranslateProcessor(llm, "translate_ja", "日语"),
+        "translate_en": TranslateProcessor(llm, "translate_en", "英语"),
+        "summary": SummarizeProcessor(llm),
     }
 
     sinks_map = cfg.get("sinks") or {}

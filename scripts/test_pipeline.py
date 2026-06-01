@@ -26,6 +26,9 @@ async def main() -> None:
         "呃那个我想说就是今天天气挺好的然后我们要不要出去走走啊",   # 无前缀 → 默认 polish
         "原文 这句话保持原样不要润色直接上屏",                       # → raw
         "润色 嗯这个方案我觉得吧大概还行就先这样",                   # → polish
+        "译英 你好，很高兴认识你，我们一起合作吧",                   # → translate_en
+        "译日 我们下午三点在会议室开会",                             # → translate_ja
+        "总结 今天先搭好环境又修了中文路径的bug然后接通了润色和翻译", # → summary
     ]
     for t in tests:
         r = await pipe.run(t)

@@ -59,6 +59,10 @@ pipeline:
 sinks:
   raw: type
   polish: type
+  translate_zh: type
+  translate_ja: type
+  translate_en: type
+  summary: type
 
 # ---------------- 各引擎独立配置 ----------------
 engines:
