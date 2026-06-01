@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import os
 import sys
 
 import numpy as np
@@ -411,6 +412,16 @@ async def _drain_audio(engine, events: asyncio.Queue) -> None:
 
 
 def main() -> None:
+    if sys.stdout is None or sys.stderr is None:   # 打包成 windowed exe 无控制台→stdout/stderr 为 None，
+        import io                                   # 任何 print/write 都会崩 → 重定向到日志文件(可事后排查)
+        try:
+            from desktop.config import get_user_data_dir
+            os.makedirs(get_user_data_dir(), exist_ok=True)
+            _logf = open(os.path.join(get_user_data_dir(), "voiceinput.log"), "a", encoding="utf-8", buffering=1)
+        except Exception:
+            _logf = io.StringIO()
+        sys.stdout = sys.stdout or _logf
+        sys.stderr = sys.stderr or _logf
     if "--settings" in sys.argv:                # 打包后用 --settings 复用本 exe 跑设置窗(单 exe 双模式)
         from desktop.settings import main as _settings_main
         _settings_main()

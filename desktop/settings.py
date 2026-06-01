@@ -74,7 +74,7 @@ def main():
     import webview
     api = SettingsAPI()
     webview.create_window("语音输入法 · 设置", HTML, js_api=api,
-                          width=860, height=470, background_color="#101216")
+                          width=860, height=545, background_color="#101216")
     webview.start()
 
 
