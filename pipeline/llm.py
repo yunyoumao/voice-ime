@@ -44,7 +44,8 @@ class LLMClient:
         proc = subprocess.run(
             [self.glm_python, self.glm_script, "--system", system,
              "--model", self.glm_model, "--json", "--timeout", str(self.timeout)],
-            input=user, capture_output=True, text=True, timeout=self.timeout + 30,
+            input=user, capture_output=True, text=True, encoding="utf-8",
+            timeout=self.timeout + 30,
         )
         if proc.returncode != 0:
             raise RuntimeError(f"ask_glm.py 退出码 {proc.returncode}: {proc.stderr[:200]}")
