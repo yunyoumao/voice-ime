@@ -398,6 +398,36 @@ def cursor_xy() -> tuple[int, int]:
         return 0, 0
 
 
+def active_monitor_rect():
+    """光标所在显示器的工作区 (left, top, right, bottom)（多屏正确，已避开任务栏）。
+    用于把状态浮窗固定到"当前屏幕底部居中"。非 Windows / 失败返回 None。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                        ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+        u = ctypes.windll.user32
+        pt = wintypes.POINT()
+        u.GetCursorPos(ctypes.byref(pt))
+        u.MonitorFromPoint.restype = ctypes.c_void_p
+        u.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+        u.GetMonitorInfoW.argtypes = [ctypes.c_void_p, ctypes.POINTER(MONITORINFO)]
+        hmon = u.MonitorFromPoint(pt, 2)               # MONITOR_DEFAULTTONEAREST
+        mi = MONITORINFO()
+        mi.cbSize = ctypes.sizeof(MONITORINFO)
+        if u.GetMonitorInfoW(ctypes.c_void_p(hmon), ctypes.byref(mi)):
+            r = mi.rcWork
+            return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+    except Exception:
+        pass
+    return None
+
+
 @dataclass
 class MenuGeometry:
     """环形命中判定（屏幕坐标，+Y 向下）。纯函数、可单测。"""
@@ -689,15 +719,19 @@ class StatusHud:
         self._img_item = None
 
     def _position_and_show(self) -> None:
-        cx, cy = cursor_xy()
-        x, y = cx + 18, cy + 22
-        try:                                   # 先夹到屏内(deiconify 前定位 → 玻璃才能干净截背景)
-            sw, sh = self._win.winfo_screenwidth(), self._win.winfo_screenheight()
-            x = max(4, min(x, sw - self._W - 4))
-            y = max(4, min(y, sh - self._H - 4))
-        except Exception:
-            pass
-        self._x, self._y = x, y
+        # 状态浮窗固定在「当前屏幕底部居中」(不跟鼠标跳，更稳更美观；选择轮盘才跟鼠标)。
+        rect = active_monitor_rect()
+        if rect:
+            left, top, right, bottom = rect
+            x = (left + right) // 2 - self._W // 2     # 当前屏幕水平居中
+            y = bottom - self._H - 60                    # 工作区底部上方 60px(任务栏之上)
+        else:                                            # 回退：主屏底部居中
+            try:
+                sw, sh = self._win.winfo_screenwidth(), self._win.winfo_screenheight()
+            except Exception:
+                sw, sh = 1280, 720
+            x, y = sw // 2 - self._W // 2, sh - self._H - 60
+        self._x, self._y = int(x), int(y)
         if self._glass and self._hud_hwnd:        # 原生玻璃窗：截背景→显示窗(内容随后由 _draw 贴)
             from desktop import glass_window
             self._grab_frost()
