@@ -5,129 +5,193 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>语音输入法 · 设置</title>
 <style>
-  :root{ --accent:#a6b3f8; --accent2:#8b9bf0; --bg:#15161e; --card:rgba(255,255,255,.06);
-         --line:rgba(255,255,255,.10); --txt:#eceefb; --muted:#9aa0b8; }
+  :root{
+    --accent:#a6b3f8; --accent-br:#bcc6ff; --accent-deep:#8b9bf0;
+    --bg:#0e0f16; --txt:#edeefb; --muted:#8e93ab; --muted2:#6b6f87;
+    --card-top:rgba(255,255,255,.055); --card-bot:rgba(255,255,255,.022);
+    --line:rgba(255,255,255,.085); --field:rgba(255,255,255,.04);
+  }
   *{margin:0;padding:0;box-sizing:border-box}
-  body{ font-family:-apple-system,BlinkMacSystemFont,"SF Pro SC","PingFang SC","Microsoft YaHei",sans-serif;
-        background:radial-gradient(120% 120% at 50% 0%, #20223040 0%, var(--bg) 60%), var(--bg);
-        color:var(--txt); padding:22px 22px 96px; min-height:100vh; font-size:13px; }
-  h1{font-size:17px;font-weight:600;margin-bottom:16px;letter-spacing:.3px}
-  .card{ background:var(--card); border:1px solid var(--line); border-radius:16px;
-         padding:16px 18px; margin-bottom:14px; backdrop-filter:blur(20px) saturate(150%); }
-  .card h2{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;
-           letter-spacing:.8px;margin-bottom:12px}
-  .row{margin-bottom:12px}
-  .row:last-child{margin-bottom:0}
-  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro SC","PingFang SC","Microsoft YaHei UI",sans-serif;
+    color:var(--txt); font-size:12.5px; overflow:hidden;
+    background:
+      radial-gradient(90% 70% at 50% -8%, rgba(166,179,248,.16), transparent 60%),
+      radial-gradient(60% 50% at 100% 110%, rgba(139,155,240,.08), transparent 60%),
+      var(--bg);
+  }
+  /* 细腻噪点，去塑料感 */
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.025;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");}
+  .app{height:100%;display:flex;flex-direction:column;padding:18px 20px 16px;max-width:880px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;gap:11px;margin-bottom:14px;padding-left:2px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);
+       box-shadow:0 0 10px 1px rgba(166,179,248,.7);align-self:center}
+  h1{font-size:15px;font-weight:600;letter-spacing:.4px}
+  .sub{font-size:11px;color:var(--muted2);margin-left:auto;letter-spacing:.3px}
+
+  .grid{flex:1;display:grid;grid-template-columns:1.12fr 1fr;gap:13px;min-height:0}
+  .col{display:flex;flex-direction:column;gap:13px;min-height:0}
+
+  .card{
+    background:linear-gradient(160deg,var(--card-top),var(--card-bot));
+    border:1px solid var(--line); border-radius:15px; padding:14px 16px;
+    box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 10px 26px -12px rgba(0,0,0,.55);
+    opacity:0; transform:translateY(7px); animation:rise .42s cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  .card.fill{flex:1;min-height:0;overflow:auto}
+  .card:nth-child(1){animation-delay:.04s} .card:nth-child(2){animation-delay:.10s}
+  .card:nth-child(3){animation-delay:.16s}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .ttl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;
+       letter-spacing:1.4px;margin-bottom:11px;display:flex;align-items:center;gap:7px}
+  .ttl::before{content:"";width:13px;height:1.5px;border-radius:2px;
+       background:linear-gradient(90deg,var(--accent),transparent)}
+
+  .row{margin-bottom:10px} .row:last-child{margin-bottom:0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:.2px}
   input[type=text],input[type=number],select{
-    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
-    background:rgba(255,255,255,.05);color:var(--txt);font-size:13px;outline:none;
-    transition:border .15s,background .15s; font-family:inherit;}
-  input:focus,select:focus{border-color:var(--accent);background:rgba(166,179,248,.08)}
-  select{appearance:none;cursor:pointer;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 4.5L6 7.5L9 4.5' stroke='%239aa0b8' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>");
+    width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:10px;
+    background:var(--field);color:var(--txt);font-size:12.5px;font-family:inherit;
+    outline:none;transition:border .15s, box-shadow .15s, background .15s;-webkit-appearance:none;appearance:none;}
+  input::placeholder{color:var(--muted2)}
+  input:focus,select:focus{border-color:var(--accent-deep);background:rgba(166,179,248,.06);
+    box-shadow:0 0 0 3px rgba(166,179,248,.16)}
+  select{cursor:pointer;padding-right:30px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><path d='M3 4.5L6 7.5L9 4.5' stroke='%238e93ab' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-repeat:no-repeat;background-position:right 11px center}
-  .hint{font-size:11px;color:var(--muted);margin-top:5px;opacity:.8}
-  .check{display:flex;align-items:center;gap:9px;cursor:pointer;color:var(--txt);font-size:13px}
-  .check input{width:16px;height:16px;accent-color:var(--accent)}
-  .cond{display:none}
-  .cond.on{display:block;animation:fade .2s ease}
-  @keyframes fade{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
-  .testbtn{margin-top:8px;padding:6px 12px;font-size:12px;border:1px solid var(--line);
-    border-radius:9px;background:rgba(255,255,255,.05);color:var(--accent);cursor:pointer}
-  .testbtn:hover{background:rgba(166,179,248,.12)}
-  .bar{position:fixed;left:0;right:0;bottom:0;padding:14px 22px;display:flex;gap:10px;
-    align-items:center;background:linear-gradient(transparent,var(--bg) 30%);}
-  .bar .grow{flex:1;font-size:12px;color:var(--muted)}
-  button.primary{padding:9px 20px;border:none;border-radius:11px;font-size:13px;font-weight:600;
-    background:linear-gradient(var(--accent),var(--accent2));color:#1a1d2e;cursor:pointer}
-  button.primary:hover{filter:brightness(1.08)}
-  button.ghost{padding:9px 14px;border:1px solid var(--line);border-radius:11px;font-size:13px;
-    background:transparent;color:var(--muted);cursor:pointer}
-  button.ghost:hover{color:var(--txt);border-color:var(--accent)}
+  .hint{font-size:10.5px;color:var(--muted2);margin-top:5px;line-height:1.4}
+  .check{display:flex;align-items:flex-start;gap:9px;cursor:pointer;color:var(--txt);font-size:12px;line-height:1.45}
+  .check input{width:15px;height:15px;margin-top:1px;accent-color:var(--accent);flex:none}
+  .cond{display:none} .cond.on{display:block}
+
+  /* 按钮：appearance:none 杀掉 WebView2 原生浅色按钮样式(原 bug) + 显式高对比 */
+  .btns{display:flex;gap:8px;margin-top:11px}
+  button{font-family:inherit;cursor:pointer;-webkit-appearance:none;appearance:none;
+    border:none;border-radius:10px;font-size:12px;font-weight:500;transition:filter .15s,background .15s,border-color .15s}
+  .mini{padding:7px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(166,179,248,.32);color:var(--accent-br)}
+  .mini:hover{background:rgba(166,179,248,.14);border-color:var(--accent)}
+
+  footer{display:flex;align-items:center;gap:11px;margin-top:14px;padding:0 2px}
+  #status{flex:1;font-size:11.5px;color:var(--muted);letter-spacing:.2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ghost{padding:9px 15px;background:transparent;border:1px solid var(--line);color:var(--muted)}
+  .ghost:hover{color:var(--txt);border-color:var(--accent-deep)}
+  .save{padding:9px 24px;font-weight:600;color:#13151f;
+    background:linear-gradient(160deg,var(--accent-br),var(--accent-deep));
+    box-shadow:0 6px 18px -6px rgba(166,179,248,.6)}
+  .save:hover{filter:brightness(1.07)}
 </style>
 </head>
 <body>
-  <h1>⚙️ 设置</h1>
+<div class="app">
+  <header>
+    <span class="dot"></span><h1>语音输入法 · 设置</h1>
+    <span class="sub">保存后重启生效</span>
+  </header>
 
-  <div class="card">
-    <h2>识别引擎</h2>
-    <div class="row">
-      <label>引擎</label>
-      <select id="engine" onchange="onEngine()">
-        <option value="local">本地 SenseVoice（离线·免费·推荐）</option>
-        <option value="soniox">Soniox（逐字实时·中英日混合最强）</option>
-        <option value="aliyun">阿里百炼</option>
-        <option value="volcano">火山豆包</option>
-      </select>
-    </div>
-    <div class="cond" data-engine="local">
-      <div class="row"><label>识别语言</label>
-        <select id="local_language">
-          <option value="auto">自动</option><option value="zh">中文</option>
-          <option value="en">英文</option><option value="ja">日语</option>
-          <option value="ko">韩语</option><option value="yue">粤语</option>
-        </select>
-        <div class="hint">说单一语言时设死(如日语)比 auto 更准</div>
+  <div class="grid">
+    <!-- 左栏：识别引擎 -->
+    <div class="col">
+      <div class="card fill">
+        <div class="ttl">识别引擎</div>
+        <div class="row">
+          <label>引擎</label>
+          <select id="engine" onchange="onEngine()">
+            <option value="local">本地 SenseVoice · 离线免费（推荐）</option>
+            <option value="soniox">Soniox · 逐字实时·中英日混合最强</option>
+            <option value="aliyun">阿里百炼</option>
+            <option value="volcano">火山豆包</option>
+          </select>
+        </div>
+        <div class="cond on" data-engine="local">
+          <div class="two">
+            <div class="row"><label>识别语言</label>
+              <select id="local_language">
+                <option value="auto">自动</option><option value="zh">中文</option>
+                <option value="en">英文</option><option value="ja">日语</option>
+                <option value="ko">韩语</option><option value="yue">粤语</option>
+              </select>
+            </div>
+            <div class="row"><label>线程数</label><input type="number" id="local_num_threads" min="1" max="8"></div>
+          </div>
+          <div class="hint">只说单一语言时把它设死(如「日语」)，比「自动」更准。</div>
+          <div class="btns">
+            <button class="mini" onclick="downloadModels()">下载 / 更新模型</button>
+            <button class="mini" onclick="testEngine()">检查就绪</button>
+          </div>
+        </div>
+        <div class="cond" data-engine="soniox">
+          <div class="row"><label>API Key　*</label><input type="text" id="soniox_api_key" placeholder="console.soniox.com 获取"></div>
+          <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
+        </div>
+        <div class="cond" data-engine="aliyun">
+          <div class="row"><label>DashScope API Key　*</label><input type="text" id="aliyun_api_key" placeholder="百炼控制台获取"></div>
+          <div class="row"><label>区域</label>
+            <select id="aliyun_region"><option value="beijing">北京</option><option value="singapore">新加坡</option></select></div>
+          <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
+        </div>
+        <div class="cond" data-engine="volcano">
+          <div class="two">
+            <div class="row"><label>App ID　*</label><input type="text" id="volcano_app_id"></div>
+            <div class="row"><label>Access Token　*</label><input type="text" id="volcano_access_token"></div>
+          </div>
+          <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
+        </div>
       </div>
-      <div class="row"><label>线程数</label><input type="number" id="local_num_threads" min="1" max="8"></div>
-      <button class="testbtn" onclick="downloadModels()">下载 / 更新模型</button>
     </div>
-    <div class="cond" data-engine="soniox">
-      <div class="row"><label>API Key *</label><input type="text" id="soniox_api_key" placeholder="console.soniox.com 获取"></div>
+
+    <!-- 右栏：触发 / 处理 / 上屏 -->
+    <div class="col">
+      <div class="card">
+        <div class="ttl">触发</div>
+        <div class="two">
+          <div class="row"><label>全局热键</label><input type="text" id="hotkey" placeholder="&lt;alt_r&gt;"></div>
+          <div class="row"><label>方式</label><select id="hotkey_mode">
+            <option value="hold">按住说话</option><option value="toggle">点一下开/停</option></select></div>
+        </div>
+        <div class="hint">键名不确定就跑 scripts/probe_key.py 探测。</div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">处理</div>
+        <div class="two">
+          <div class="row"><label>默认模式</label><select id="default_mode">
+            <option value="raw">直通原文</option><option value="polish">润色</option>
+            <option value="summary">总结</option><option value="translate_zh">译中</option>
+            <option value="translate_en">译英</option><option value="translate_ja">译日</option></select></div>
+          <div class="row"><label>大模型通道</label><select id="provider">
+            <option value="glm-http">智谱直连</option><option value="glm-cli">本地 ask_glm</option>
+            <option value="openai">OpenAI 兼容</option></select></div>
+        </div>
+        <div class="row" style="margin-top:4px"><label class="check"><input type="checkbox" id="prefix_routing">
+          前缀路由：说「原文…」直通、「润色…」润色</label></div>
+      </div>
+
+      <div class="card">
+        <div class="ttl">上屏</div>
+        <div class="row"><label>方式</label><select id="output_mode">
+          <option value="paste">粘贴（推荐）</option><option value="type">逐字模拟键盘</option></select></div>
+      </div>
     </div>
-    <div class="cond" data-engine="aliyun">
-      <div class="row"><label>DashScope API Key *</label><input type="text" id="aliyun_api_key"></div>
-      <div class="row"><label>区域</label><select id="aliyun_region">
-        <option value="beijing">北京</option><option value="singapore">新加坡</option></select></div>
-    </div>
-    <div class="cond" data-engine="volcano">
-      <div class="row"><label>App ID *</label><input type="text" id="volcano_app_id"></div>
-      <div class="row"><label>Access Token *</label><input type="text" id="volcano_access_token"></div>
-    </div>
-    <button class="testbtn" onclick="testEngine()">测试当前引擎</button>
   </div>
 
-  <div class="card">
-    <h2>触发</h2>
-    <div class="row"><label>全局热键</label><input type="text" id="hotkey" placeholder="&lt;alt_r&gt;">
-      <div class="hint">按键名不确定就跑 scripts/probe_key.py 探测</div></div>
-    <div class="row"><label>触发方式</label><select id="hotkey_mode">
-      <option value="hold">按住说话、松开上屏</option><option value="toggle">点一下开始 / 再点结束</option></select></div>
-  </div>
-
-  <div class="card">
-    <h2>处理</h2>
-    <div class="row"><label>默认模式</label><select id="default_mode">
-      <option value="raw">直通（原文）</option><option value="polish">润色（推荐）</option>
-      <option value="summary">总结</option><option value="translate_zh">译中</option>
-      <option value="translate_en">译英</option><option value="translate_ja">译日</option></select></div>
-    <div class="row"><label>大模型通道</label><select id="provider">
-      <option value="glm-http">智谱直连（glm-http，推荐）</option>
-      <option value="glm-cli">本地 ask_glm.py（glm-cli）</option>
-      <option value="openai">OpenAI 兼容</option></select></div>
-    <div class="row"><label class="check"><input type="checkbox" id="prefix_routing">
-      前缀路由：说"原文…"走直通、"润色…"走润色</label></div>
-  </div>
-
-  <div class="card">
-    <h2>上屏</h2>
-    <div class="row"><label>方式</label><select id="output_mode">
-      <option value="paste">粘贴（推荐）</option><option value="type">逐字模拟键盘</option></select></div>
-  </div>
-
-  <div class="bar">
-    <span class="grow" id="status">改完点保存 · 保存后重启生效</span>
+  <footer>
+    <span id="status">改完点保存 · 保存后重启生效</span>
     <button class="ghost" onclick="resetDefault()">恢复默认</button>
-    <button class="primary" onclick="save()">保存</button>
-  </div>
+    <button class="save" onclick="save()">保存</button>
+  </footer>
+</div>
 
 <script>
   const $ = id => document.getElementById(id);
   const api = () => window.pywebview.api;
 
   function fill(cfg){
-    const e = cfg.engine || "local"; $("engine").value = e;
+    $("engine").value = cfg.engine || "local";
     const en = cfg.engines || {};
     $("local_language").value = (en.local||{}).language || "auto";
     $("local_num_threads").value = (en.local||{}).num_threads ?? 2;
@@ -145,69 +209,41 @@
     $("output_mode").value = (cfg.output||{}).mode || "paste";
     onEngine();
   }
-
   function onEngine(){
     const e = $("engine").value;
-    document.querySelectorAll(".cond").forEach(el =>
-      el.classList.toggle("on", el.dataset.engine === e));
+    document.querySelectorAll(".cond").forEach(el => el.classList.toggle("on", el.dataset.engine === e));
   }
-
   function gather(){
     return {
-      engine: $("engine").value,
-      hotkey: $("hotkey").value.trim(),
-      hotkey_mode: $("hotkey_mode").value,
-      pipeline: { default_mode: $("default_mode").value,
-                  prefix_routing: $("prefix_routing").checked,
-                  llm: { provider: $("provider").value } },
-      output: { mode: $("output_mode").value },
-      engines: {
-        local: { language: $("local_language").value,
-                 num_threads: parseInt($("local_num_threads").value)||2 },
-        soniox: { api_key: $("soniox_api_key").value.trim() },
-        aliyun: { api_key: $("aliyun_api_key").value.trim(), region: $("aliyun_region").value },
-        volcano: { app_id: $("volcano_app_id").value.trim(),
-                   access_token: $("volcano_access_token").value.trim() } }
+      engine: $("engine").value, hotkey: $("hotkey").value.trim(), hotkey_mode: $("hotkey_mode").value,
+      pipeline:{ default_mode:$("default_mode").value, prefix_routing:$("prefix_routing").checked,
+                 llm:{ provider:$("provider").value } },
+      output:{ mode:$("output_mode").value },
+      engines:{
+        local:{ language:$("local_language").value, num_threads:parseInt($("local_num_threads").value)||2 },
+        soniox:{ api_key:$("soniox_api_key").value.trim() },
+        aliyun:{ api_key:$("aliyun_api_key").value.trim(), region:$("aliyun_region").value },
+        volcano:{ app_id:$("volcano_app_id").value.trim(), access_token:$("volcano_access_token").value.trim() } }
     };
   }
-
   function validate(){
     const e = $("engine").value;
     if(e==="soniox" && !$("soniox_api_key").value.trim()) return "Soniox 需要 API Key";
     if(e==="aliyun" && !$("aliyun_api_key").value.trim()) return "阿里需要 API Key";
-    if(e==="volcano" && (!$("volcano_app_id").value.trim()||!$("volcano_access_token").value.trim()))
-      return "火山需要 App ID 和 Access Token";
+    if(e==="volcano" && (!$("volcano_app_id").value.trim()||!$("volcano_access_token").value.trim())) return "火山需要 App ID 和 Access Token";
     return null;
   }
-
   function setStatus(t,c){ const s=$("status"); s.textContent=t; s.style.color=c||"var(--muted)"; }
-
   async function save(){
-    const err = validate();
-    if(err){ setStatus("✗ "+err, "#ff8080"); return; }
-    try{ await api().save_config(gather());
-      setStatus("✓ 已保存 · 重启生效", "#90e0a0");
-    }catch(e){ setStatus("✗ 保存失败："+e, "#ff8080"); }
+    const err=validate(); if(err){ setStatus("✗ "+err,"#ff8c8c"); return; }
+    try{ await api().save_config(gather()); setStatus("✓ 已保存 · 重启生效","#8fe6a4"); }
+    catch(e){ setStatus("✗ 保存失败："+e,"#ff8c8c"); }
   }
-
-  async function testEngine(){
-    try{ setStatus(await api().test_engine($("engine").value)); }
-    catch(e){ setStatus("✗ "+e, "#ff8080"); }
-  }
-
-  async function downloadModels(){
-    try{ setStatus(await api().download_models()); }
-    catch(e){ setStatus("✗ "+e, "#ff8080"); }
-  }
-
-  async function resetDefault(){
-    try{ fill(await api().get_default_config()); setStatus("已载入默认值(未保存)"); }
-    catch(e){ setStatus("✗ "+e, "#ff8080"); }
-  }
-
+  async function testEngine(){ try{ setStatus(await api().test_engine($("engine").value),"var(--accent-br)"); }catch(e){ setStatus("✗ "+e,"#ff8c8c"); } }
+  async function downloadModels(){ try{ setStatus(await api().download_models(),"var(--accent-br)"); }catch(e){ setStatus("✗ "+e,"#ff8c8c"); } }
+  async function resetDefault(){ try{ fill(await api().get_default_config()); setStatus("已载入默认值（未保存）"); }catch(e){ setStatus("✗ "+e,"#ff8c8c"); } }
   window.addEventListener("pywebviewready", async () => {
-    try{ fill(await api().get_config()); }
-    catch(e){ setStatus("载入配置失败："+e, "#ff8080"); }
+    try{ fill(await api().get_config()); }catch(e){ setStatus("载入配置失败："+e,"#ff8c8c"); }
   });
 </script>
 </body>
