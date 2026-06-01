@@ -15,6 +15,7 @@ dashscope>=1.20         # 阿里百炼 qwen3-asr / Fun-ASR
 # ===== 体验层（阶段 3）=====
 pystray>=0.19           # 系统托盘
 Pillow>=10.0            # 托盘图标绘制
+pywebview>=5.0          # 设置界面（苹果玻璃风 HTML/CSS，独立子进程，跨 Win/Mac）
 
 # 注：火山豆包流式 ASR 用 websockets 自行实现鉴权（appid+token），
 #     如需官方 SDK 可在阶段 2 再加 volcengine。

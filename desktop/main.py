@@ -160,6 +160,20 @@ async def run() -> None:
     if rcfg.get("talk_hotkey"):             # 音量+ = toggle 点按说话(默认模式)
         hotkey.add_binding(rcfg["talk_hotkey"], "toggle", on_start, on_stop,
                            suppress=bool(rcfg.get("suppress", True)))
+
+    settings_key = cfg.get("settings_hotkey", "<f9>")   # 拉起设置窗(独立 pywebview 子进程)
+    if settings_key:
+        def _open_settings() -> None:
+            import os
+            import subprocess
+            try:
+                if getattr(sys, "frozen", False):       # 打包态：独立设置 exe
+                    subprocess.Popen([os.path.join(os.path.dirname(sys.executable), "VoiceInputSettings.exe")])
+                else:                                    # 开发态：子进程跑 desktop.settings
+                    subprocess.Popen([sys.executable, "-m", "desktop.settings"], cwd=cfg.get("_root", "."))
+            except Exception as exc:
+                print(f"⚠️ 打开设置失败：{exc}")
+        hotkey.add_binding(settings_key, "tap", _open_settings, None)
     hotkey.start()
     try:
         audio.start()                   # 麦克风常开：消除每次按键的冷启动延迟（吞字主因）
