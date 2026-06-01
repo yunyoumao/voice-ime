@@ -16,9 +16,9 @@ import yaml
 # 兼容 `python desktop/settings.py` 直跑：把项目根加进 path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from desktop.config import get_model_base, load_config, save_config  # noqa: E402
+from desktop.config import ROOT, get_model_base, load_config, save_config  # noqa: E402
 
-HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings_ui.html")
+HTML = os.path.join(ROOT, "desktop", "settings_ui.html")   # dev=项目根 / 打包=_MEIPASS，均含 desktop/
 
 
 def _strip(cfg: dict) -> dict:

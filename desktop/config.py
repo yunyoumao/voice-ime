@@ -15,7 +15,10 @@ import sys
 
 import yaml
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if getattr(sys, "frozen", False):                 # PyInstaller 打包态：资源在 _MEIPASS
+    ROOT = getattr(sys, "_MEIPASS", None) or os.path.dirname(sys.executable)
+else:                                              # 开发态：项目根(config.py 上两级)
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def get_user_data_dir() -> str:

@@ -25,3 +25,9 @@ __pycache__/
 
 # 视觉预览图（离屏渲染用于肉眼验证，本地用，不入库）
 _preview_*.png
+_preview_tmp/
+
+# PyInstaller 打包产物（体积大，发布走 GitHub Releases，不入库）
+dist/
+build/
+*.manifest

@@ -165,8 +165,8 @@ async def run() -> None:
         import os
         import subprocess
         try:
-            if getattr(sys, "frozen", False):       # 打包态：独立设置 exe
-                subprocess.Popen([os.path.join(os.path.dirname(sys.executable), "VoiceInputSettings.exe")])
+            if getattr(sys, "frozen", False):       # 打包态：复用本 exe，带 --settings 跑设置窗
+                subprocess.Popen([sys.executable, "--settings"])
             else:                                    # 开发态：子进程跑 desktop.settings
                 subprocess.Popen([sys.executable, "-m", "desktop.settings"], cwd=cfg.get("_root", "."))
         except Exception as exc:
@@ -411,6 +411,10 @@ async def _drain_audio(engine, events: asyncio.Queue) -> None:
 
 
 def main() -> None:
+    if "--settings" in sys.argv:                # 打包后用 --settings 复用本 exe 跑设置窗(单 exe 双模式)
+        from desktop.settings import main as _settings_main
+        _settings_main()
+        return
     # 首启：本地引擎且模型缺失则弹窗下载(打包后用户首次运行走这条)；取消则退出。
     cfg = load_config()
     if str(cfg.get("engine") or "local").lower() == "local":
