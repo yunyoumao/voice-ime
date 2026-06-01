@@ -227,12 +227,16 @@ async def run() -> None:
                     gstate["s"] = "IDLE"
                     set_status("off")
                     events.put_nowait(("ctrl", "STOP"))
-                else:                              # 某瓣 / 中心(不选=默认直接打字 raw) → 锁模式，免持续录
-                    idx = z if isinstance(z, int) else 0   # center → 直接打字(MODES[0]=raw)
-                    forced["mode"] = MODES[idx]
+                else:                              # 某瓣 / 中心 → 锁模式，免持续录
+                    if isinstance(z, int):         # 选中某一瓣 → 强制该模式
+                        forced["mode"] = MODES[z]
+                        label = LABELS[z]
+                    else:                          # 中心不选 = 走默认(default_mode，现为润色)+前缀路由，不再硬塞 raw
+                        forced["mode"] = None
+                        label = "默认（润色）"
                     gstate["s"] = "RECORDING"
                     set_status("listen")
-                    print(f"🔒 已选 [{LABELS[idx]}]，继续说话；再按一下右 Ctrl 停止上屏。")
+                    print(f"🔒 已选 [{label}]，继续说话；再按一下右 Ctrl 停止上屏。")
 
             btn = str((cfg.get("mouse_menu") or {}).get("button", "middle")).lower()
             if btn in ("middle", "right", "left"):     # 鼠标键触发（按住拖→松开选，move 即时更新高亮）
@@ -272,12 +276,16 @@ async def run() -> None:
                         gstate["s"] = "IDLE"
                         set_status("off")
                         events.put_nowait(("ctrl", "STOP"))
-                    else:                              # 某瓣 / 中心(默认直接打字) → 锁模式，免持续录
-                        idx = z if isinstance(z, int) else 0
-                        forced["mode"] = MODES[idx]
+                    else:                              # 某瓣 / 中心 → 锁模式，免持续录
+                        if isinstance(z, int):         # 选中某一瓣 → 强制该模式
+                            forced["mode"] = MODES[z]
+                            label = LABELS[z]
+                        else:                          # 中心不选 = 走默认(default_mode，现为润色)+前缀路由
+                            forced["mode"] = None
+                            label = "默认（润色）"
                         gstate["s"] = "RECORDING"
                         set_status("listen")
-                        print(f"🔒 已选 [{LABELS[idx]}]，继续说话；再点一下停止上屏。")
+                        print(f"🔒 已选 [{label}]，继续说话；再点一下停止上屏。")
                 elif s == "RECORDING":
                     gstate["s"] = "IDLE"
                     events.put_nowait(("ctrl", "STOP"))
