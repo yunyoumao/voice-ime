@@ -210,8 +210,8 @@ def _wedge_shape(size, indices, inner, outer, ss=3, fillet_px=2.8, band_px=1.7):
         pts = _arc_pts(cx, cy, ro, a0, a1) + _arc_pts(cx, cy, ri, a1, a0)
         d.polygon(pts, fill=255)
     m = m.filter(ImageFilter.GaussianBlur(fillet_px * ss)).point(lambda v: 255 if v >= 128 else 0)  # 圆角
-    k = int(round(band_px * ss)) * 2 + 1                  # 腐蚀核(奇)
-    edge = ImageChops.subtract(m, m.filter(ImageFilter.MinFilter(k)))
+    eroded = m.filter(ImageFilter.GaussianBlur(band_px * ss)).point(lambda v: 255 if v >= 185 else 0)  # 高斯腐蚀(比 MinFilter 快很多)
+    edge = ImageChops.subtract(m, eroded)
     return m.resize((size, size), Image.LANCZOS), edge.resize((size, size), Image.LANCZOS)
 
 
@@ -251,12 +251,17 @@ def _glass_icons(size, inner, outer, highlight, ss=3):
     return ov.resize((size, size), Image.LANCZOS)
 
 
-def compose_menu_glass(frost_rgba, inner, outer, highlight):
-    """花瓣形磨砂(全圆角) + 玻璃内容(白描边/白图标/periwinkle高亮) → RGBA(瓣外透明)。
-    交 glass_window.show_layered_image 逐像素 alpha 显示 → 只花瓣处磨砂、其余透出真实桌面、全圆角无毛边。
-    描边由圆角 mask 腐蚀得到 → 与磨砂边完全贴合、不会戳出尖角。"""
+_GLASS_LAYER_CACHE: dict = {}    # (size,inner,outer,highlight) → (花瓣alpha掩膜, 内容层)；几何相关、与背景无关 → 缓存
+
+
+def _glass_layers(size, inner, outer, highlight):
+    """几何相关的(花瓣 alpha 掩膜, 内容层 RGBA)。只随 highlight 变(7种)→ 缓存，避免运行时重算昂贵的 mask。
+    内容层 = 白描边 + 白图标 + periwinkle 高亮(填充/柔光/亮描边)，与背景无关，可直接叠到任意磨砂底上。"""
+    key = (size, inner, outer, highlight)
+    cached = _GLASS_LAYER_CACHE.get(key)
+    if cached is not None:
+        return cached
     from PIL import Image, ImageChops, ImageFilter
-    size = frost_rgba.width
     rest = [i for i in range(6) if i != highlight]
     rfill, redge = _wedge_shape(size, rest, inner, outer)
     petal_alpha = ImageChops.lighter(rfill, _disc_mask(size, inner - 2))   # 静止瓣 + 中心 hub 盘
@@ -264,18 +269,26 @@ def compose_menu_glass(frost_rgba, inner, outer, highlight):
     if highlight is not None:
         hfill, hedge = _wedge_shape(size, [highlight], inner, outer + 8)    # 高亮瓣外凸 8px
         petal_alpha = ImageChops.lighter(petal_alpha, hfill)
+    overlay = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    if hfill is not None:                                          # 高亮柔光辉 + periwinkle 半透填充
+        overlay = Image.alpha_composite(overlay, _tint_layer((166, 179, 248),
+                                                             hfill.filter(ImageFilter.GaussianBlur(7)), 0.5))
+        overlay = Image.alpha_composite(overlay, _tint_layer((166, 179, 248), hfill, 0.40))
+    overlay = Image.alpha_composite(overlay, _tint_layer((255, 255, 255), redge, 0.60))    # 静止瓣白描边
+    if hedge is not None:
+        overlay = Image.alpha_composite(overlay, _tint_layer((210, 218, 255), hedge, 0.95))  # 高亮亮描边
+    overlay = Image.alpha_composite(overlay, _glass_icons(size, inner, outer, highlight))    # 白图标 + hub 圈
+    _GLASS_LAYER_CACHE[key] = (petal_alpha, overlay)
+    return petal_alpha, overlay
 
+
+def compose_menu_glass(frost_rgba, inner, outer, highlight):
+    """磨砂底 + 缓存的玻璃内容层 → RGBA(瓣外透明)。运行时只做 putalpha + 1 次合成 → 高亮切换零卡顿。"""
+    from PIL import Image
+    petal_alpha, overlay = _glass_layers(frost_rgba.width, inner, outer, highlight)
     frosted = frost_rgba.copy()
     frosted.putalpha(petal_alpha)                                  # 仅花瓣+hub 磨砂，其余 alpha=0
-    out = frosted
-    if hfill is not None:                                          # 高亮柔光辉 + periwinkle 半透填充
-        out = Image.alpha_composite(out, _tint_layer((166, 179, 248),
-                                                     hfill.filter(ImageFilter.GaussianBlur(7)), 0.5))
-        out = Image.alpha_composite(out, _tint_layer((166, 179, 248), hfill, 0.40))
-    out = Image.alpha_composite(out, _tint_layer((255, 255, 255), redge, 0.60))    # 静止瓣白描边
-    if hedge is not None:
-        out = Image.alpha_composite(out, _tint_layer((210, 218, 255), hedge, 0.95))  # 高亮亮描边
-    return Image.alpha_composite(out, _glass_icons(size, inner, outer, highlight))    # 白图标 + hub 圈
+    return Image.alpha_composite(frosted, overlay)
 
 
 def _frost_card_mask(W, H, radius=18, ss=3):
@@ -338,21 +351,21 @@ def render_hud_image(W, H, mode, frame, theme, levels=None, progress=0.0, done=F
     d.rounded_rectangle((2 * ss, 2 * ss, Wp - 2 * ss, Hp - 2 * ss), radius=int(18 * ss),
                         fill=_rgb(theme["hud_bg"]), outline=_rgb(theme["accent"]), width=max(1, ss))
     midy = Hp * 0.5
-    if mode == "process":                                # 处理中：不确定式流动条(不报假百分比，不会卡在92%)
+    if mode == "process":                                # 处理中：0→进度填充条 + 百分比(完成跳满+对勾)
         pad = 20 * ss
         bx0, bx1, bh = pad, Wp - pad, 8 * ss
         cyk = midy - 13 * ss
+        p = 1.0 if done else max(0.05, min(0.97, progress))
         d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["track"]))
-        if done:                                         # 完成 → 填满 + 矢量对勾(字体 ✓ 常缺字→手画)
-            d.rounded_rectangle((bx0, midy - bh / 2, bx1, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["accent"]))
+        d.rounded_rectangle((bx0, midy - bh / 2, bx0 + (bx1 - bx0) * p, midy + bh / 2),
+                            radius=bh / 2, fill=_rgb(theme["accent"]))
+        if done:                                         # 完成 → 矢量对勾(字体 ✓ 常缺字→手画)
             k = 5 * ss
             d.line([(Wp / 2 - k, cyk), (Wp / 2 - k * 0.2, cyk + k * 0.7), (Wp / 2 + k, cyk - k * 0.7)],
                    fill=_rgb(theme["accent"]), width=max(2, int(2 * ss)), joint="curve")
-        else:                                            # 一段亮条平滑来回滑 → "正在处理"，真完成时收尾跳满
-            seg = (bx1 - bx0) * 0.32
-            t = 0.5 - 0.5 * math.cos(frame * 0.12)       # 0..1 平滑 ping-pong
-            sx = bx0 + (bx1 - bx0 - seg) * t
-            d.rounded_rectangle((sx, midy - bh / 2, sx + seg, midy + bh / 2), radius=bh / 2, fill=_rgb(theme["accent"]))
+        else:
+            d.text((Wp / 2, cyk), f"{int(p * 100)}%", font=_font(int(11 * ss), bold=True),
+                   fill=_rgb(theme["hud_text"]), anchor="mm")
     else:                                                # listen：滚动声波(随真实音量起伏)
         vals = list(levels or [])
         nb, pad = 20, 14 * ss
@@ -447,6 +460,12 @@ class RadialMenu:
             except Exception as e:
                 print(f"[RadialMenu] 原生玻璃窗创建失败，回退 v3: {e}")
                 self._glass = False
+            if self._glass:                          # 预热 7 种高亮的几何层缓存 → 运行时高亮切换零卡顿
+                try:
+                    for _h in (None, 0, 1, 2, 3, 4, 5):
+                        _glass_layers(self._size, self._inner, self._outer, _h)
+                except Exception:
+                    pass
         if not self._glass:                          # 回退：transparentcolor + alpha + canvas(v3)
             try:
                 self.root.attributes("-transparentcolor", self._key)
@@ -721,10 +740,13 @@ class StatusHud:
         if not self._visible:
             return
         self._frame += 1
-        if self._mode == "process" and self._done:
-            if self._frame - self._done_frame > 16:        # 完成填满后约 0.4s 收起
-                self.hide()
-                return
+        if self._mode == "process":
+            if self._done:
+                if self._frame - self._done_frame > 16:    # 完成填满后约 0.4s 收起
+                    self.hide()
+                    return
+            else:                                          # 按 elapsed/估计 填充进度，封顶 97%，真完成跳满
+                self._progress = min(0.97, (self._frame - self._proc_frame0) / max(1, self._estimate_frames))
         self._draw()
 
     def hide(self) -> None:
