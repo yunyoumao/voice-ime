@@ -77,7 +77,7 @@ async def run() -> None:
     async def _final_worker() -> None:
         # 并发处理、按序上屏：多句同时调 GLM（并发上限 4），但严格按识别顺序上屏，
         # 兼顾速度与顺序——连说多句不再「一句等一句」地排队（修复"润色超级慢"）。
-        sem = asyncio.Semaphore(4)
+        sem = asyncio.Semaphore(2)   # 限并发：太高易触发 GLM 限流(429)→退避重试→偶发卡很久
         ordered: asyncio.Queue = asyncio.Queue()
 
         async def _compute(text, fmode):
@@ -189,18 +189,19 @@ async def run() -> None:
             def g_release(x: int, y: int) -> None:
                 if gstate["s"] != "SELECTING":     # 停止那次按下的松开 → 忽略
                     return
-                seg = menu.hit_test(x, y)
+                z = menu.zone(x, y)                # int(瓣) | "center"(默认直接打字) | "outside"(取消)
                 menu.hide()
-                if seg is None:                    # 中心死区/环外松开 = 取消
+                if z == "outside":                 # 拖到环外松开 = 取消
                     forced["mode"] = _CANCEL
                     gstate["s"] = "IDLE"
                     set_status("off")
                     events.put_nowait(("ctrl", "STOP"))
-                else:                              # 选中 → 锁模式，菜单消失，继续免持录音
-                    forced["mode"] = MODES[seg]
+                else:                              # 某瓣 / 中心(不选=默认直接打字 raw) → 锁模式，免持续录
+                    idx = z if isinstance(z, int) else 0   # center → 直接打字(MODES[0]=raw)
+                    forced["mode"] = MODES[idx]
                     gstate["s"] = "RECORDING"
                     set_status("listen")
-                    print(f"🔒 已选 [{LABELS[seg]}]，继续说话；再点一下中键停止上屏。")
+                    print(f"🔒 已选 [{LABELS[idx]}]，继续说话；再按一下右 Ctrl 停止上屏。")
 
             btn = str((cfg.get("mouse_menu") or {}).get("button", "middle")).lower()
             if btn in ("middle", "right", "left"):     # 鼠标键触发（move 即时更新高亮）

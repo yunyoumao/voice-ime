@@ -42,7 +42,18 @@ class MenuGeometry:
         dx, dy = x - self.center_x, y - self.center_y
         r = math.hypot(dx, dy)
         if r < self.inner_radius or r > self.outer_radius:
-            return None                       # 中心死区 / 环外 → 取消
+            return None                       # 中心死区 / 环外 → 不高亮任何瓣
+        ang = math.degrees(math.atan2(dy, dx)) % 360.0
+        return int(ang // 60) % 6
+
+    def zone(self, x: float, y: float):
+        """松开判区：int(瓣 0-5) | 'center'(死区,默认直接打字) | 'outside'(环外,取消)。"""
+        dx, dy = x - self.center_x, y - self.center_y
+        r = math.hypot(dx, dy)
+        if r < self.inner_radius:
+            return "center"
+        if r > self.outer_radius:
+            return "outside"
         ang = math.degrees(math.atan2(dy, dx)) % 360.0
         return int(ang // 60) % 6
 
