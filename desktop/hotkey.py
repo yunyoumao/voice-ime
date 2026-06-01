@@ -46,40 +46,50 @@ class HotkeyListener:
         on_start: Callable[[], None],
         on_stop: Callable[[], None],
     ) -> None:
-        spec = cfg.get("hotkey", "<alt_r>")
-        # 构造时尚无 listener，但修饰键/功能键无需布局还原，直接取 vk 即稳定
-        self._target = {_ident(k) for k in keyboard.HotKey.parse(spec)}
-        self._mode = str(cfg.get("hotkey_mode", "hold")).lower()  # hold | toggle
-        self._on_start = on_start
-        self._on_stop = on_stop
+        # 一个 pynput 键盘监听承载多个热键绑定——Windows 下多个 keyboard.Listener
+        # 并存时第二个常收不到事件，故所有热键(说话键 + 菜单键)都挂在同一个 listener。
+        self._binds: list = []
         self._pressed: set = set()
-        self._active = False
-        self._combo_down = False          # 组合键当前是否"已按齐"（toggle 防长按重复）
         self._listener: keyboard.Listener | None = None
+        self.add_binding(cfg.get("hotkey", "<alt_r>"),
+                         cfg.get("hotkey_mode", "hold"), on_start, on_stop)
+
+    def add_binding(self, spec: str, mode, on_start, on_stop) -> None:  # noqa: ANN001
+        # 修饰键/功能键无需布局还原，构造时直接取 vk 即稳定
+        self._binds.append({
+            "target": {_ident(k) for k in keyboard.HotKey.parse(spec)},
+            "mode": str(mode).lower(),        # hold | toggle
+            "on_start": on_start,
+            "on_stop": on_stop,
+            "active": False,
+            "combo_down": False,              # toggle 防长按重复
+        })
 
     def _handle_press(self, key) -> None:  # noqa: ANN001
-        self._pressed.add(_ident(key, self._listener))
-        if not self._target.issubset(self._pressed):
-            return
-        if self._mode == "toggle":
-            if not self._combo_down:          # 仅在"刚按齐"那一刻翻转，忽略长按重复
-                self._combo_down = True
-                self._active = not self._active
-                (self._on_start if self._active else self._on_stop)()
-        else:  # hold
-            if not self._active:
-                self._active = True
-                self._on_start()
+        kid = _ident(key, self._listener)
+        self._pressed.add(kid)
+        print(f"   [键诊断] 按下 {kid}", flush=True)   # 临时：定位右Ctrl菜单键
+        for b in self._binds:
+            if not b["target"].issubset(self._pressed):
+                continue
+            if b["mode"] == "toggle":
+                if not b["combo_down"]:       # 仅在"刚按齐"那一刻翻转，忽略长按重复
+                    b["combo_down"] = True
+                    b["active"] = not b["active"]
+                    (b["on_start"] if b["active"] else b["on_stop"])()
+            elif not b["active"]:  # hold
+                b["active"] = True
+                b["on_start"]()
 
     def _handle_release(self, key) -> None:  # noqa: ANN001
         kid = _ident(key, self._listener)
-        if self._mode == "toggle":
-            if kid in self._target:
-                self._combo_down = False
-        else:  # hold
-            if self._active and kid in self._target:
-                self._active = False
-                self._on_stop()
+        for b in self._binds:
+            if b["mode"] == "toggle":
+                if kid in b["target"]:
+                    b["combo_down"] = False
+            elif b["active"] and kid in b["target"]:  # hold
+                b["active"] = False
+                b["on_stop"]()
         self._pressed.discard(kid)
 
     def start(self) -> None:

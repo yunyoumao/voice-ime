@@ -156,7 +156,6 @@ async def run() -> None:
     #      loop.call_soon_threadsafe 回到本事件循环主线程执行（tkinter 非线程安全）----
     menu = None
     gesture = None
-    menu_hotkey = None
     pump_task = None
     if (cfg.get("mouse_menu") or {}).get("enabled", False):
         try:
@@ -214,13 +213,15 @@ async def run() -> None:
                 gesture.start()
 
             mk = (cfg.get("mouse_menu") or {}).get("hotkey")
-            if mk:                                     # 键盘键触发（零冲突）：按下=开/停，松开=锁定
-                menu_hotkey = HotkeyListener(
-                    {"hotkey": mk, "hotkey_mode": "hold"},
-                    on_start=lambda: loop.call_soon_threadsafe(g_press, *cursor_xy()),
-                    on_stop=lambda: loop.call_soon_threadsafe(g_release, *cursor_xy()),
+            if mk:                                     # 键盘键触发（零冲突）：挂到同一个键盘监听(add_binding)
+                def _menu_down() -> None:
+                    print("   [键诊断] 菜单键 on_start 触发", flush=True)
+                    loop.call_soon_threadsafe(g_press, *cursor_xy())
+                hotkey.add_binding(
+                    mk, "hold", _menu_down,
+                    lambda: loop.call_soon_threadsafe(g_release, *cursor_xy()),
                 )
-                menu_hotkey.start()
+                print(f"   [键诊断] 已注册热键目标 = {[sorted(b['target']) for b in hotkey._binds]}", flush=True)
 
             async def _pump_tk() -> None:
                 while True:
@@ -280,8 +281,6 @@ async def run() -> None:
     finally:
         hotkey.stop()
         worker_task.cancel()
-        if menu_hotkey is not None:
-            menu_hotkey.stop()
         if gesture is not None:
             gesture.stop()
         if pump_task is not None:
