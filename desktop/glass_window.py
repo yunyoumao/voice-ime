@@ -370,6 +370,26 @@ def set_layered(hwnd: int) -> bool:
         return False
 
 
+
+def apply_noactivate(hwnd: int) -> bool:
+    """给窗口加 WS_EX_NOACTIVATE + WS_EX_TOOLWINDOW：不抢焦点、菜单样式。"""
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        GWL_EXSTYLE = -20
+        WS_EX_NOACTIVATE = 0x08000000
+        WS_EX_TOOLWINDOW = 0x80
+        u.GetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+        u.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
+        u.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+        h = ctypes.c_void_p(int(hwnd))
+        style = u.GetWindowLongPtrW(h, GWL_EXSTYLE)
+        u.SetWindowLongPtrW(h, GWL_EXSTYLE, style | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW)
+        return True
+    except Exception:
+        return False
+
 def apply_acrylic(hwnd: int, gradient_abgr: int = 0x66141019) -> bool:
     """ACCENT_ENABLE_ACRYLICBLURBEHIND + 自定义着色(ABGR：高字节=alpha，越小越透明)。
     Win10/11 通用，比 DWM SYSTEMBACKDROP 更能精确控制"磨砂浓度/透明度"。"""
@@ -446,3 +466,178 @@ if __name__ == '__main__':
     button.pack(side=tk.BOTTOM, pady=20)
 
     root.mainloop()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 独立原生层窗(防 tkinter 重绘擦图)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+_native_glass_hwnd = None
+_native_glass_class = None
+_wnd_proc_ref = None
+
+
+def _register_glass_window_class():
+    """注册自定义窗口类(仅首次)。返回类名字符串。"""
+    global _native_glass_class, _wnd_proc_ref
+    if _native_glass_class:
+        return _native_glass_class
+    
+    class_name = "VoiceInputMethodGlassWindow"
+    u = ctypes.windll.user32
+    from ctypes import WINFUNCTYPE
+    # LRESULT(c_ssize_t) 返回；wnd_proc 必须始终返回 int(不能 None，否则 ctypes 回调转换报错刷屏)。
+    WndProc = WINFUNCTYPE(ctypes.c_ssize_t, ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p)
+    u.DefWindowProcW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+    u.DefWindowProcW.restype = ctypes.c_ssize_t
+
+    def wnd_proc(hwnd, msg, wparam, lparam):
+        if msg == 2:  # WM_DESTROY
+            return 0
+        try:
+            res = u.DefWindowProcW(hwnd, msg, wparam, lparam)
+            return int(res) if res is not None else 0
+        except Exception:
+            return 0
+    
+    _wnd_proc_ref = WndProc(wnd_proc)
+    
+    from ctypes import wintypes
+    class WNDCLASSW(ctypes.Structure):
+        _fields_ = [
+            ("style", ctypes.c_uint),
+            ("lpfnWndProc", WndProc),
+            ("cbClsExtra", ctypes.c_int),
+            ("cbWndExtra", ctypes.c_int),
+            ("hInstance", ctypes.c_void_p),
+            ("hIcon", ctypes.c_void_p),
+            ("hCursor", ctypes.c_void_p),
+            ("hbrBackground", ctypes.c_void_p),
+            ("lpszMenuName", ctypes.c_wchar_p),
+            ("lpszClassName", ctypes.c_wchar_p),
+        ]
+    
+    wc = WNDCLASSW()
+    wc.lpszClassName = class_name
+    wc.lpfnWndProc = _wnd_proc_ref
+    wc.style = 0
+    try:
+        u.GetModuleHandleW.argtypes = [ctypes.c_wchar_p]
+        u.GetModuleHandleW.restype = ctypes.c_void_p
+        wc.hInstance = u.GetModuleHandleW(None)
+    except Exception:
+        wc.hInstance = None
+    wc.hbrBackground = None
+    wc.hIcon = None
+    wc.hCursor = None
+    wc.lpszMenuName = None
+    wc.cbClsExtra = 0
+    wc.cbWndExtra = 0
+    
+    if not u.RegisterClassW(ctypes.byref(wc)):
+        raise RuntimeError(f"RegisterClassW failed for {class_name}")
+    
+    _native_glass_class = class_name
+    return class_name
+
+
+def create_glass_window() -> int:
+    """创建独立的原生 LAYERED 窗口。返回 HWND(int)。"""
+    global _native_glass_hwnd
+    if _native_glass_hwnd:
+        return _native_glass_hwnd
+    
+    if sys.platform != 'win32':
+        raise RuntimeError("create_glass_window: 仅支持 Windows")
+    
+    class_name = _register_glass_window_class()
+    u = ctypes.windll.user32
+    WS_EX_LAYERED = 0x80000
+    WS_EX_NOACTIVATE = 0x08000000
+    WS_EX_TOOLWINDOW = 0x80
+    WS_EX_TOPMOST = 0x08
+    WS_POPUP = 0x80000000
+    
+    try:
+        u.GetModuleHandleW.argtypes = [ctypes.c_wchar_p]
+        u.GetModuleHandleW.restype = ctypes.c_void_p
+        hinstance = u.GetModuleHandleW(None)
+    except Exception:
+        hinstance = None
+    
+    u.CreateWindowExW.restype = ctypes.c_void_p          # 64位 HWND：不设 restype 会被截成32位→无效句柄
+    u.CreateWindowExW.argtypes = [
+        ctypes.c_uint, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+    ]
+    hwnd = u.CreateWindowExW(
+        WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        class_name,
+        "GlassWindow",
+        WS_POPUP,
+        0, 0, 100, 100,
+        None, None,
+        hinstance,
+        None
+    )
+    
+    if not hwnd:
+        raise RuntimeError("CreateWindowExW failed")
+    
+    _native_glass_hwnd = int(hwnd)
+    return _native_glass_hwnd
+
+
+def show_glass_window(hwnd: int, x: int, y: int, w: int, h: int) -> bool:
+    """移动窗口到(x,y) 并设尺寸(w,h)，然后显示(不激活)。"""
+    if sys.platform != 'win32':
+        return False
+    
+    try:
+        u = ctypes.windll.user32
+        SWP_NOACTIVATE = 0x10
+        SWP_SHOWWINDOW = 0x40
+        HWND_TOPMOST = ctypes.c_void_p(-1)
+        u.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+        u.SetWindowPos.restype = ctypes.c_int
+        
+        u.SetWindowPos(
+            ctypes.c_void_p(int(hwnd)), HWND_TOPMOST,
+            int(x), int(y), int(w), int(h),
+            SWP_NOACTIVATE | SWP_SHOWWINDOW
+        )
+        return True
+    except Exception:
+        return False
+
+
+def hide_glass_window(hwnd: int) -> bool:
+    """隐藏窗口。"""
+    if sys.platform != 'win32':
+        return False
+    
+    try:
+        u = ctypes.windll.user32
+        u.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        u.ShowWindow(ctypes.c_void_p(int(hwnd)), 0)  # SW_HIDE
+        return True
+    except Exception:
+        return False
+
+
+def destroy_glass_window():
+    """销毁全局原生窗。"""
+    global _native_glass_hwnd
+    if not _native_glass_hwnd:
+        return
+    
+    try:
+        u = ctypes.windll.user32
+        u.DestroyWindow.argtypes = [ctypes.c_void_p]
+        u.DestroyWindow(ctypes.c_void_p(int(_native_glass_hwnd)))
+    except Exception:
+        pass
+    finally:
+        _native_glass_hwnd = None

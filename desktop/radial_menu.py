@@ -434,18 +434,20 @@ class RadialMenu:
         self._left = self._top = 0
         self.geom = MenuGeometry(0.0, 0.0, self._inner, self._outer)
 
-        self.root = tk.Tk()
+        self._glass_hwnd = None
+        self.root = tk.Tk()                          # 始终建隐藏 tk root：HUD/pump/main.py 都依赖它
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
-        if self._glass:                             # 玻璃：层窗(无 canvas)，先置 LAYERED 防黑闪
-            self.root.geometry(f"{self._size}x{self._size}+0+0")
-            self.root.update_idletasks()
+        if self._glass:                              # 玻璃菜单：独立原生层窗显示(tkinter 不碰它→不被重绘擦掉)
             try:
                 from desktop import glass_window
-                glass_window.set_layered(self.root.winfo_id())
-            except Exception:
+                self._glass_hwnd = glass_window.create_glass_window()
+                glass_window.set_layered(self._glass_hwnd)
+                glass_window.apply_noactivate(self._glass_hwnd)
+            except Exception as e:
+                print(f"[RadialMenu] 原生玻璃窗创建失败，回退 v3: {e}")
                 self._glass = False
-        if not self._glass:                         # 回退：transparentcolor + alpha + canvas(v3)
+        if not self._glass:                          # 回退：transparentcolor + alpha + canvas(v3)
             try:
                 self.root.attributes("-transparentcolor", self._key)
             except Exception:
@@ -458,9 +460,10 @@ class RadialMenu:
             self._canvas = tk.Canvas(self.root, width=self._size, height=self._size,
                                      bg=self._key, highlightthickness=0, bd=0)
             self._canvas.pack()
-        self.root.withdraw()
+        self.root.withdraw()                         # 隐藏 root：玻璃模式它从不显示，仅作 tkinter 机器/HUD 父窗
 
     def pump(self) -> None:
+        # 始终泵 tk root：它只刷新隐藏 root + 泵线程消息队列(含原生玻璃窗的消息)，不碰原生窗的 ULW 内容 → 不冲突。
         try:
             self.root.update()
         except Exception:
@@ -471,18 +474,32 @@ class RadialMenu:
         self._highlight = None
         left, top = int(x - self._size / 2), int(y - self._size / 2)
         self._left, self._top = left, top
-        self.root.geometry(f"{self._size}x{self._size}+{left}+{top}")
-        if self._glass:
-            self._grab_frost()         # 窗口仍 withdraw → 干净截取背后桌面做磨砂底
-        self._save_focus()
-        self.root.deiconify()
-        self.root.update_idletasks()
-        self._apply_noactivate()
-        if self._glass:
-            self._paint_glass()        # 层窗逐像素 alpha 显示(花瓣磨砂，瓣外透明)
+        if self._glass and self._glass_hwnd:
+            # 原生窗模式：截屏、合成、显示
+            self._grab_frost()
+            self._save_focus()
+            try:
+                from desktop import glass_window
+                img = compose_menu_glass(self._frost, self._inner, self._outer, None)
+                glass_window.show_glass_window(self._glass_hwnd, left, top, self._size, self._size)
+                glass_window.show_layered_image(self._glass_hwnd, img, left, top)
+            except Exception as e:
+                print(f"[RadialMenu.show] glass display failed: {e}")
+            self._restore_focus()
         else:
-            self._draw()
-        self._restore_focus()          # 不抢目标窗口焦点 → 松开后 Ctrl+V 落在目标输入框
+            # Tkinter 模式
+            self.root.geometry(f"{self._size}x{self._size}+{left}+{top}")
+            if self._glass:
+                self._grab_frost()
+            self._save_focus()
+            self.root.deiconify()
+            self.root.update_idletasks()
+            self._apply_noactivate()
+            if self._glass:
+                self._paint_glass()
+            else:
+                self._draw()
+            self._restore_focus()
         self._visible = True
 
     def _grab_frost(self) -> None:
@@ -511,7 +528,16 @@ class RadialMenu:
         if seg != self._highlight:
             self._highlight = seg
             if self._visible:
-                self._paint_glass() if self._glass else self._draw()
+                if self._glass and self._glass_hwnd:
+                    # 原生窗模式：重新合成并显示
+                    try:
+                        from desktop import glass_window
+                        img = compose_menu_glass(self._frost, self._inner, self._outer, seg)
+                        glass_window.show_layered_image(self._glass_hwnd, img, self._left, self._top)
+                    except Exception:
+                        pass
+                else:
+                    self._paint_glass() if self._glass else self._draw()
 
     def hit_test(self, x: int, y: int) -> int | None:
         return self.geom.hit_test(x, y)
@@ -521,16 +547,31 @@ class RadialMenu:
 
     def hide(self) -> None:
         self._visible = False
-        try:
-            self.root.withdraw()
-        except Exception:
-            pass
+        if self._glass and self._glass_hwnd:
+            # 原生窗模式
+            try:
+                from desktop import glass_window
+                glass_window.hide_glass_window(self._glass_hwnd)
+            except Exception:
+                pass
+        else:
+            try:
+                self.root.withdraw()
+            except Exception:
+                pass
 
     def close(self) -> None:
-        try:
-            self.root.destroy()
-        except Exception:
-            pass
+        if self._glass and self._glass_hwnd:
+            try:
+                from desktop import glass_window
+                glass_window.destroy_glass_window()
+            except Exception:
+                pass
+        else:
+            try:
+                self.root.destroy()
+            except Exception:
+                pass
 
     # ---------------- 渲染(PIL 抗锯齿) ----------------
     def _draw(self) -> None:
