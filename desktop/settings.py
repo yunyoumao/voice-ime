@@ -74,6 +74,10 @@ def _keep_secret_if_blanked(old: dict, new: dict) -> None:
 class SettingsAPI:
     """pywebview js_api：JS 调 window.pywebview.api.<方法>()。"""
 
+    def __init__(self) -> None:
+        self._mic_stream = None       # 麦克风实时测试用的临时输入流
+        self._mic_peak = 0            # 自上次读取以来的峰值（0..32767）
+
     def get_config(self):
         return _strip(load_config())
 
@@ -126,6 +130,51 @@ class SettingsAPI:
         except Exception:
             return []
         return out
+
+    # ---- 麦克风实时测试：开 / 读电平 / 停（设置窗口里点「测试」用，所见即所得）----
+    def mic_test_start(self, device=None):  # noqa: ANN001
+        """打开所选设备开始测电平。device 传名字片段/索引/空(系统默认)。成功 True，失败返回错误串。"""
+        self.mic_test_stop()
+        try:
+            import numpy as np
+            import sounddevice as sd
+            from desktop.audio import _resolve_device
+        except Exception as e:
+            return f"✗ 依赖缺失：{e}"
+        dev = _resolve_device(device if device not in ("", None) else None)
+
+        def _cb(indata, frames, t, status):  # noqa: ANN001
+            try:
+                self._mic_peak = max(self._mic_peak, int(np.abs(indata).max()))
+            except Exception:
+                pass
+
+        try:
+            self._mic_stream = sd.InputStream(samplerate=16000, channels=1, blocksize=1600,
+                                              dtype="int16", device=dev, callback=_cb)
+            self._mic_stream.start()
+            return True
+        except Exception as e:
+            self._mic_stream = None
+            return f"✗ 打不开该设备：{str(e)[:90]}"
+
+    def mic_level(self):
+        """返回自上次调用以来的峰值百分比(0-100)并清零，供前端动画电平条。"""
+        p = self._mic_peak
+        self._mic_peak = 0
+        return round(p * 100 / 32768)
+
+    def mic_test_stop(self):
+        s = self._mic_stream
+        self._mic_stream = None
+        self._mic_peak = 0
+        if s is not None:
+            try:
+                s.stop()
+                s.close()
+            except Exception:
+                pass
+        return True
 
     def set_autostart(self, enabled):
         from desktop.autostart import set_autostart as _set

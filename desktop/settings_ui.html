@@ -224,6 +224,9 @@
               <div class="row"><label>麦克风</label><select id="mic_device"><option value="">自动（系统默认）</option></select></div>
               <div class="row" style="max-width:50%"><label>软件增益（倍）</label><input class="mono" type="number" id="gain" min="0.5" max="12" step="0.5"></div>
               <div class="hint">远程桌面 / RDP 麦克风偏小声时调大（试 <b>2~6</b>），<b>1.0</b>＝不变。</div>
+              <div class="row"><label>录音测试</label><button class="mini" id="mic_test_btn" onclick="toggleMicTest()">▶ 开始测试</button></div>
+              <div class="row"><label></label><div style="flex:1;height:14px;background:rgba(255,255,255,.08);border-radius:7px;overflow:hidden"><div id="mic_bar" style="height:100%;width:0%;background:linear-gradient(90deg,#39d,#5e8);transition:width .08s"></div></div></div>
+              <div class="hint" id="mic_test_hint">点「开始测试」后对着麦说话，绿条跳动＝这个麦能录到声音。换麦 / 改增益后先测一下再保存。</div>
             </div>
             <div class="panel">
               <div class="ttl">录音</div>
@@ -471,8 +474,8 @@
     if(!window.pywebview){ return; }
     api().list_input_devices().then(list=>{
       sel.innerHTML = '<option value="">自动（系统默认）</option>';
-      (list||[]).forEach(d=>{ const o=document.createElement('option'); o.value=String(d.index); o.textContent=d.name; sel.appendChild(o); });
-      sel.value = (cur!==null && cur!==undefined && cur!=='') ? String(cur) : '';
+      (list||[]).forEach(d=>{ const o=document.createElement('option'); o.value=d.name; o.textContent=d.name; sel.appendChild(o); });
+      sel.value = (cur!==null && cur!==undefined && cur!=='') ? String(cur) : '';   // 现在存的是设备名（编号会随会话变，名字稳）
     }).catch(()=>{});
   }
 
@@ -512,12 +515,40 @@
       const terms=$('sk_dict').value.split('\n').map(s=>s.trim()).filter(Boolean);
       await api().save_dict_terms(terms);              // 失败要进 catch、别假装已保存
       try{ await api().set_autostart($('autostart').checked); }catch(e){}   // 开机自启失败不影响配置已存
-      setStatus('✓ 已保存 · 重启主程序生效','var(--ok)');
+      setStatus('✓ 已保存（麦克风/增益即时生效；热键等其它设置仍需重启）','var(--ok)');
     }catch(e){ setStatus('✗ 保存失败：'+e,'var(--bad)'); }
   }
   async function testEngine(){ try{ setStatus(await api().test_engine($('engine').value),'var(--accent)'); }catch(e){ setStatus('✗ '+e,'var(--bad)'); } }
   async function downloadModels(){ try{ setStatus(await api().download_models(),'var(--accent)'); }catch(e){ setStatus('✗ '+e,'var(--bad)'); } }
   async function openDataDir(){ try{ await api().open_data_dir(); }catch(e){} }
+  let micTimer=null, micTicks=0;
+  async function toggleMicTest(){
+    if(micTimer){ stopMicTest(); return; }
+    if(!window.pywebview){ $('mic_test_hint').textContent='（请在设置窗口里使用）'; return; }
+    const r=await api().mic_test_start($('mic_device').value);
+    if(r!==true){ $('mic_test_hint').textContent=String(r); return; }
+    $('mic_test_btn').textContent='■ 停止测试'; micTicks=0;
+    micTimer=setInterval(async()=>{
+      try{
+        const raw=await api().mic_level();
+        const g=parseFloat($('gain').value)||1;            // 带上你设的软件增益，所见即识别引擎所得
+        const lv=Math.min(100,Math.round(raw*g));
+        $('mic_bar').style.width=lv+'%';
+        $('mic_bar').style.background = lv>=98 ? 'linear-gradient(90deg,#e85,#f55)' : 'linear-gradient(90deg,#39d,#5e8)';
+        $('mic_test_hint').textContent = raw>2
+          ? ('✓ 收到声音：增益后 '+lv+'%（原始 '+raw+'%）'+(lv>=98?' ⚠ 可能爆音，调小增益':''))
+          : '…没收到声音，说句话试试（没反应就换个麦 / 检查 RDP 是否转发）';
+      }catch(e){}
+      if(++micTicks>300){ stopMicTest(); }   // ~30s 自动停，别一直占着麦
+    },100);
+  }
+  function stopMicTest(){
+    if(micTimer){ clearInterval(micTimer); micTimer=null; }
+    const b=$('mic_test_btn'); if(b) b.textContent='▶ 开始测试';
+    const bar=$('mic_bar'); if(bar) bar.style.width='0%';
+    if(window.pywebview){ api().mic_test_stop().catch(()=>{}); }
+  }
+  window.addEventListener('beforeunload', stopMicTest);
   async function resetDefault(){ try{ fill(await api().get_default_config()); setStatus('已载入默认值（未保存）'); }catch(e){ setStatus('✗ '+e,'var(--bad)'); } }
 
   // 快捷键录制：捕获一次 keydown → 映射成 pynput 键名

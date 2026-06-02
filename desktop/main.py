@@ -272,12 +272,7 @@ async def run() -> None:
                 gesture.start()
 
             mk = (cfg.get("mouse_menu") or {}).get("hotkey")
-            if mk:                                     # 键盘键触发（零冲突）：挂到同一个键盘监听(add_binding)
-                hotkey.add_binding(
-                    mk, "hold",
-                    lambda: loop.call_soon_threadsafe(g_press, *cursor_xy()),
-                    lambda: loop.call_soon_threadsafe(g_release, *cursor_xy()),
-                )
+            # 键盘键(如右Ctrl)的菜单触发改到 menu_tap 定义之后绑定（solotap 模式，见下）
 
             def menu_tap(x: int, y: int) -> None:
                 # 遥控器"点按"开轮盘的三步循环(tap)，复用 gstate + 同套选择逻辑：
@@ -299,6 +294,11 @@ async def run() -> None:
                     gstate["s"] = "IDLE"
                     events.put_nowait(("ctrl", "STOP"))
 
+            if mk:                                     # 键盘键(如右Ctrl)：solotap=单独按才触发，不影响 Ctrl+Enter/C/V 等组合
+                hotkey.add_binding(
+                    mk, "solotap",
+                    lambda: loop.call_soon_threadsafe(menu_tap, *cursor_xy()), None,
+                )
             if rcfg.get("menu_hotkey"):                # 音量- = tap 点按开轮盘
                 hotkey.add_binding(
                     rcfg["menu_hotkey"], "tap",
@@ -341,6 +341,54 @@ async def run() -> None:
     print(f"   {label}（预缓冲 {preroll_frames * frame_ms}ms 防吞字）。Ctrl+C 退出。\n")
 
     worker_task = asyncio.create_task(_final_worker())   # 累积识别片段，停录后整段拼一次发 GLM
+
+    # 配置热重载：监听 config.yaml，麦克风/增益改动即时生效（无需重启）
+    def _cfg_mtime() -> float:
+        try:
+            return os.path.getmtime(cfg.get("_config_path") or "")
+        except OSError:
+            return 0.0
+
+    def _swap_audio(new_audio: dict) -> None:
+        nonlocal audio
+        try:
+            audio.stop()
+        except Exception:
+            pass
+        try:
+            audio = AudioRecorder({"audio": new_audio}, on_frame)
+            audio.start()
+        except Exception as exc:
+            print(f"⚠️ 切换麦克风失败：{exc} → 回退系统默认")
+            audio = AudioRecorder({"audio": {**new_audio, "device": None}}, on_frame)
+            try:
+                audio.start()
+            except Exception as exc2:
+                print(f"❌ 麦克风仍打不开：{exc2}")
+
+    async def _watch_config() -> None:
+        last = _cfg_mtime()
+        while True:
+            await asyncio.sleep(1.0)
+            try:
+                m = _cfg_mtime()
+                if m == last:
+                    continue
+                last = m
+                new = load_config()
+                na, oa = (new.get("audio") or {}), (cfg.get("audio") or {})
+                if na.get("device") != oa.get("device"):
+                    cfg["audio"] = na
+                    print("🔄 检测到麦克风改动，正在切换…")
+                    _swap_audio(na)
+                elif na.get("gain") != oa.get("gain"):
+                    cfg["audio"] = na
+                    audio.set_gain(na.get("gain", 1.0))
+                    print(f"🔄 增益已即时切到 ×{float(na.get('gain', 1.0)):g}")
+            except Exception as exc:
+                print(f"   [配置热重载异常] {exc}")
+
+    watch_task = asyncio.create_task(_watch_config())
     tray = tray_task = None
     try:                                                  # 系统托盘(打开设置/退出)：阻塞的 run() 放后台线程
         from desktop.tray import TrayIcon
@@ -398,6 +446,7 @@ async def run() -> None:
         if tray_task is not None:
             tray_task.cancel()
         worker_task.cancel()
+        watch_task.cancel()
         if gesture is not None:
             gesture.stop()
         if pump_task is not None:

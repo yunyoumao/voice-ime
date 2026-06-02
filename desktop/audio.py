@@ -83,3 +83,7 @@ class AudioRecorder:
         self._stream.stop()
         self._stream.close()
         self._stream = None
+
+    def set_gain(self, gain: float) -> None:
+        """运行中改软件增益（无需重开流）。"""
+        self._gain = float(gain)
