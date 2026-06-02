@@ -7,6 +7,7 @@ pystray 线程，经 loop.call_soon_threadsafe 把动作转回主事件循环。
 from __future__ import annotations
 
 import asyncio
+import os
 
 
 class TrayIcon:
@@ -18,14 +19,30 @@ class TrayIcon:
 
     @staticmethod
     def _image():
-        from PIL import Image, ImageDraw
+        from PIL import Image
+        from desktop import config
+        
+        # Try load logo from assets/icon.ico or fall back to drawing microphone
+        icon_path = os.path.join(config.ROOT, "assets", "icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                img = Image.open(icon_path).convert("RGBA")
+                # Resize to 64x64 for tray
+                if img.size != (64, 64):
+                    img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                return img
+            except Exception:
+                pass
+        
+        # Fallback: draw microphone
+        from PIL import ImageDraw
         img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
-        c = (166, 179, 248, 255)             # periwinkle，与浮窗/菜单一致
-        d.rounded_rectangle([25, 10, 39, 40], radius=7, fill=c)   # 麦克风头
-        d.arc([20, 30, 44, 50], start=0, end=180, fill=c, width=3)  # 托架
-        d.line([32, 50, 32, 56], fill=c, width=3)                 # 杆
-        d.line([25, 56, 39, 56], fill=c, width=3)                 # 底座
+        c = (166, 179, 248, 255)             # periwinkle
+        d.rounded_rectangle([25, 10, 39, 40], radius=7, fill=c)
+        d.arc([20, 30, 44, 50], start=0, end=180, fill=c, width=3)
+        d.line([32, 50, 32, 56], fill=c, width=3)
+        d.line([25, 56, 39, 56], fill=c, width=3)
         return img
 
     def _do_open(self, icon=None, item=None):

@@ -8,6 +8,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 datas = [
     ("config.example.yaml", "."),
     ("desktop/settings_ui.html", "desktop"),
+    ("assets", "assets"),
 ]
 binaries = []
 for pkg in ("sherpa_onnx", "sounddevice", "webview"):
@@ -50,7 +51,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='assets/icon.ico',
 )
 coll = COLLECT(
     exe, a.binaries, a.datas,
