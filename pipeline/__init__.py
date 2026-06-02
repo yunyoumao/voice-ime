@@ -18,7 +18,7 @@ def build_pipeline(cfg: dict) -> Pipeline:
     llm = LLMClient(cfg)
     processors = {
         "raw": PassthroughProcessor(),
-        "polish": PolishProcessor(llm),
+        "polish": PolishProcessor(llm, cfg),
         "translate_zh": TranslateProcessor(llm, "translate_zh", "中文"),
         "translate_ja": TranslateProcessor(llm, "translate_ja", "日语"),
         "translate_en": TranslateProcessor(llm, "translate_en", "英语"),

@@ -62,7 +62,8 @@
     border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--txt);font-size:12.5px;
     font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s,background .15s;-webkit-appearance:none;appearance:none}
   input.mono{font-family:var(--mono);letter-spacing:.3px}
-  input::placeholder{color:var(--muted2)}
+  input::placeholder,textarea::placeholder{color:var(--muted2)}
+  textarea{resize:vertical;min-height:62px;line-height:1.6}
   input:focus,select:focus,textarea:focus{border-color:var(--accent-deep);background:rgba(166,179,248,.06);
     box-shadow:0 0 0 3px rgba(166,179,248,.13)}
   select{cursor:pointer;padding-right:30px;
@@ -305,12 +306,36 @@
         </div>
       </section>
 
-      <!-- ===== 技能（占位） ===== -->
+      <!-- ===== 技能 ===== -->
       <section class="page" id="page-skills">
-        <div class="stub">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7zM19 14l.8 2.4 2.4.8-2.4.8L19 20.4l-.8-2.4-2.4-.8 2.4-.8z"/></svg>
-          <h2>技能 <span class="tag">即将上线</span></h2>
-          <p>把润色拆成可单独开关的能力：个性化偏好、用户词典（让「CODEX」这类词不被写错）、自动结构化、口语过滤（去「呃 / 嗯」）、去结尾句号。下一阶段加入。</p>
+        <div class="head" style="padding:0"><h1>技能</h1><div class="desc">语音转文字后自动整理的能力（润色模式生效）</div></div>
+        <div style="padding-top:15px">
+          <div class="panel">
+            <div class="ttl">总开关</div>
+            <div class="row"><label class="check"><input type="checkbox" id="sk_auto_run">
+              自动运行<span class="sub">开：按下面的技能润色；关：只转写、直接输出原文（不调用大模型）</span></label></div>
+          </div>
+          <div class="panel">
+            <div class="ttl">润色技能</div>
+            <div class="row"><label class="check"><input type="checkbox" id="sk_anti_filler">
+              口语过滤<span class="sub">去掉「呃 / 嗯 / 那个」等语气词、重复、说一半改口的部分</span></label></div>
+            <div class="row"><label class="check"><input type="checkbox" id="sk_structure">
+              自动结构化<span class="sub">较长内容用换行和短横线列点，提升可读性</span></label></div>
+            <div class="row"><label class="check"><input type="checkbox" id="sk_no_end_period">
+              去掉结尾句号<span class="sub">整段末尾不加「。」</span></label></div>
+          </div>
+          <div class="panel">
+            <div class="ttl">个性化偏好（记忆）</div>
+            <div class="row"><textarea id="sk_custom_pref" rows="3" placeholder="例：我是工程师，说话偏技术、简洁；术语尽量用英文原文"></textarea></div>
+            <div class="hint">这段会注入润色提示，让结果更贴合你的表达习惯（不改变原意）。</div>
+          </div>
+          <div class="panel">
+            <div class="ttl">用户词典</div>
+            <div class="row"><label class="check"><input type="checkbox" id="sk_use_dict">
+              加载用户词典<span class="sub">把下面的专有名词按正确写法输出，纠正同音误识</span></label></div>
+            <div class="row"><textarea id="sk_dict" rows="5" placeholder="每行一个术语，例如：&#10;CODEX&#10;SenseVoice&#10;端侧推理"></textarea></div>
+            <div class="hint">本地识别模型不支持热词，故词典在<b>润色阶段</b>由大模型纠正；「直通原文」模式不生效。</div>
+          </div>
         </div>
       </section>
 
@@ -341,7 +366,7 @@
   function nav(page){
     document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on', a.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('on', p.id==='page-'+page));
-    $('savebar').style.display = (page==='settings'||page==='models') ? 'flex' : 'none';
+    $('savebar').style.display = (page==='settings'||page==='models'||page==='skills') ? 'flex' : 'none';
     try{ location.hash = page; }catch(e){}
   }
   function subtab(name){
@@ -380,9 +405,19 @@
     $('keep_clipboard').checked = o.restore_clipboard === false;
     $('theme').value = cfg.theme||'dark';
     $('log_enabled').checked = cfg.log_enabled !== false;
+    const sk = p.skills || {};
+    $('sk_auto_run').checked = sk.auto_run !== false;
+    $('sk_anti_filler').checked = sk.anti_filler !== false;
+    $('sk_structure').checked = sk.structure === true;
+    $('sk_no_end_period').checked = sk.no_end_period === true;
+    $('sk_use_dict').checked = sk.use_dict !== false;
+    $('sk_custom_pref').value = sk.custom_pref || '';
     onEngine(); onProvider();
     loadDevices(a.device);
-    if(window.pywebview){ api().is_autostart_enabled().then(v=>{$('autostart').checked=!!v;}).catch(()=>{}); }
+    if(window.pywebview){
+      api().is_autostart_enabled().then(v=>{$('autostart').checked=!!v;}).catch(()=>{});
+      api().get_dict_terms().then(ts=>{$('sk_dict').value=(ts||[]).join('\n');}).catch(()=>{});
+    }
   }
 
   function loadDevices(cur){
@@ -406,6 +441,7 @@
       mouse_menu:{ hotkey:$('menu_hotkey').value.trim() },
       output:{ mode:$('output_mode').value, restore_clipboard: !$('keep_clipboard').checked },
       pipeline:{ default_mode:$('default_mode').value, prefix_routing:$('prefix_routing').checked,
+                 skills:{ auto_run:$('sk_auto_run').checked, anti_filler:$('sk_anti_filler').checked, structure:$('sk_structure').checked, no_end_period:$('sk_no_end_period').checked, use_dict:$('sk_use_dict').checked, custom_pref:$('sk_custom_pref').value.trim() },
                  llm:{ provider:$('provider').value, api_key:$('llm_api_key').value.trim(), model:$('llm_model').value.trim() } },
       engines:{
         local:{ language:$('local_language').value, num_threads:parseInt($('local_num_threads').value)||2 },
@@ -428,6 +464,7 @@
     try{
       await api().save_config(gather());
       try{ await api().set_autostart($('autostart').checked); }catch(e){}
+      try{ const terms=$('sk_dict').value.split('\n').map(s=>s.trim()).filter(Boolean); await api().save_dict_terms(terms); }catch(e){}
       setStatus('✓ 已保存 · 重启主程序生效','var(--ok)');
     }catch(e){ setStatus('✗ 保存失败：'+e,'var(--bad)'); }
   }

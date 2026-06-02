@@ -74,6 +74,14 @@ mouse_menu:
 pipeline:
   default_mode: polish       # raw(直通) | polish(润色)  ［summary/translate/command 后续上线］
   prefix_routing: true       # 说"原文…"走直通；说"润色…"走润色；否则用 default_mode
+  # 「技能」：润色时按开关拼装提示词（设置界面·技能页可调）
+  skills:
+    auto_run: true           # 总开关：关=只转写不润色（直通原文）
+    anti_filler: true        # 口语过滤：去掉 呃/嗯/那个/重复/改口
+    structure: false         # 自动结构化：长内容用换行/短横线列点
+    no_end_period: false     # 去掉整段结尾句号
+    use_dict: true           # 加载用户词典（user_dict.json 的术语，纠正同音误识）
+    custom_pref: ""          # 个性化偏好（自由文本，注入润色提示，相当于个人记忆）
   llm:
     provider: glm-http       # glm-http(智谱直连，只需 api_key，推荐分发) | glm-cli(本机调 ask_glm.py) | openai
     api_key: ""              # glm-http 的智谱 Key；留空则读环境变量 ZHIPU_API_KEY / ANTHROPIC_AUTH_TOKEN

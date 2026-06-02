@@ -116,6 +116,15 @@ class SettingsAPI:
         except Exception:
             return False
 
+    # ---- 阶段2 新增：用户词典读写 ----
+    def get_dict_terms(self):
+        from desktop.user_dict import get_terms
+        return get_terms()
+
+    def save_dict_terms(self, terms):
+        from desktop.user_dict import save_terms
+        return save_terms(terms)
+
 
 def main():
     import webview
