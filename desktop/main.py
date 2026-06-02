@@ -448,6 +448,12 @@ def main() -> None:
             _logf = io.StringIO()                   # 关日志或打开失败：丢弃但不崩
         sys.stdout = sys.stdout or _logf
         sys.stderr = sys.stderr or _logf
+    else:                                           # 真实控制台(中文 Windows 多为 GBK)→ 重设 utf-8，
+        for _s in (sys.stdout, sys.stderr):         # 否则 print 里的 ✓/emoji/罕见字会 UnicodeEncodeError 崩
+            try:
+                _s.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     if "--settings" in sys.argv:                # 打包后用 --settings 复用本 exe 跑设置窗(单 exe 双模式)
         from desktop.settings import main as _settings_main
         _settings_main()
