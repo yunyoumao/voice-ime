@@ -106,12 +106,9 @@ class SettingsAPI:
             os.makedirs(d, exist_ok=True)
             if sys.platform == "win32":
                 os.startfile(d)                      # type: ignore[attr-defined]
-            elif sys.platform == "darwin":
-                import subprocess
-                subprocess.Popen(["open", d])
             else:
                 import subprocess
-                subprocess.Popen(["xdg-open", d])
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", d])
             return True
         except Exception:
             return False
@@ -128,7 +125,7 @@ class SettingsAPI:
     # ---- 阶段3 新增：历史 / 统计 ----
     def get_history(self, page=0, limit=20):
         from desktop import history
-        return history.read(int(page or 0), int(limit or 20))
+        return history.read(page, limit)            # read() 内部已做 int/边界归一
 
     def get_stats(self):
         from desktop import stats

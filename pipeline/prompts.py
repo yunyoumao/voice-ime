@@ -58,10 +58,9 @@ def build_polish_system(skills: dict, terms: list) -> str:
         parts.append("遇到与下列专有名词/术语发音相近的词，按这里的写法输出：" + joined + "。")
     if s.get("structure", False):
         parts.append("内容较长或分点叙述时，可用换行和短横线“- ”组织成清晰结构。")
-        md_tail = ""
     else:
-        md_tail = "不要用 markdown、不要标题或加粗。"
+        parts.append("不要用 markdown、不要标题或加粗。")
     if s.get("no_end_period", False):
         parts.append("整段结尾不要加句号。")
-    parts.append("只输出整理后的文字，不要解释、不要引号。" + md_tail)
+    parts.append("只输出整理后的文字，不要解释、不要引号。")
     return "".join(parts)

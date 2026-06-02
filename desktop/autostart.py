@@ -49,7 +49,5 @@ def is_enabled() -> bool:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_QUERY_VALUE) as key:
             winreg.QueryValueEx(key, APP_NAME)
         return True
-    except FileNotFoundError:
-        return False
-    except OSError:
+    except OSError:                       # FileNotFoundError 是 OSError 子类，一并兜住
         return False

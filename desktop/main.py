@@ -177,7 +177,6 @@ async def run() -> None:
                            suppress=bool(rcfg.get("suppress", True)))
 
     def open_settings() -> None:                # 拉起设置窗(独立 pywebview 子进程)；F9 与托盘共用
-        import os
         import subprocess
         try:
             if getattr(sys, "frozen", False):       # 打包态：复用本 exe，带 --settings 跑设置窗
@@ -427,25 +426,29 @@ async def _drain_audio(engine, events: asyncio.Queue) -> None:
         events.put_nowait(e)
 
 
-def main() -> None:
-    if sys.stdout is None or sys.stderr is None:   # 打包成 windowed exe 无控制台→stdout/stderr 为 None，
-        import io                                   # 任何 print/write 都会崩 → 按 log_enabled 重定向到文件或丢弃
-        log_enabled = True
+def _open_log_sink():
+    """windowed exe 无控制台时的日志去向：按 log_enabled 返回日志文件句柄，否则丢弃 sink(不崩)。"""
+    import io
+    log_enabled = True
+    try:
+        from desktop.config import load_config
+        log_enabled = bool(load_config().get("log_enabled", True))
+    except Exception:
+        pass
+    if log_enabled:
         try:
-            from desktop.config import load_config as _load
-            log_enabled = bool(_load().get("log_enabled", True))
+            from desktop.config import get_user_data_dir
+            d = get_user_data_dir()
+            os.makedirs(d, exist_ok=True)
+            return open(os.path.join(d, "voiceinput.log"), "a", encoding="utf-8", buffering=1)
         except Exception:
             pass
-        _logf = None
-        if log_enabled:
-            try:
-                from desktop.config import get_user_data_dir
-                os.makedirs(get_user_data_dir(), exist_ok=True)
-                _logf = open(os.path.join(get_user_data_dir(), "voiceinput.log"), "a", encoding="utf-8", buffering=1)
-            except Exception:
-                _logf = None
-        if _logf is None:
-            _logf = io.StringIO()                   # 关日志或打开失败：丢弃但不崩
+    return io.StringIO()
+
+
+def main() -> None:
+    if sys.stdout is None or sys.stderr is None:   # 打包成 windowed exe 无控制台→stdout/stderr 为 None，
+        _logf = _open_log_sink()                    # 任何 print/write 都会崩 → 重定向到日志文件或丢弃 sink
         sys.stdout = sys.stdout or _logf
         sys.stderr = sys.stderr or _logf
     else:                                           # 真实控制台(中文 Windows 多为 GBK)→ 重设 utf-8，
