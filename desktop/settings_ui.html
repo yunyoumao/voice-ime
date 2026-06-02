@@ -471,8 +471,8 @@
     if(!window.pywebview){ return; }
     api().list_input_devices().then(list=>{
       sel.innerHTML = '<option value="">自动（系统默认）</option>';
-      (list||[]).forEach(d=>{ const o=document.createElement('option'); o.value=d.name; o.textContent=d.name; sel.appendChild(o); });
-      sel.value = (typeof cur==='string' && cur) ? cur : '';
+      (list||[]).forEach(d=>{ const o=document.createElement('option'); o.value=String(d.index); o.textContent=d.name; sel.appendChild(o); });
+      sel.value = (cur!==null && cur!==undefined && cur!=='') ? String(cur) : '';
     }).catch(()=>{});
   }
 
@@ -541,6 +541,8 @@
     if(/^Digit\d$/.test(c)) return c.slice(5);
     return null;
   }
+  // 直接把键名填进输入框：音量键「录制」抓不到(系统拦截)，靠「填音量+/−」按钮走这里
+  function setKey(id, spec){ $(id).value = spec; }
 
   // 主页统计 + 历史
   async function loadStats(){

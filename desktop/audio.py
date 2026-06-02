@@ -15,6 +15,33 @@ import numpy as np
 import sounddevice as sd
 
 
+def _resolve_device(device):  # noqa: ANN001, ANN201
+    """把 config 的 audio.device 规整成 sounddevice 能用的单一设备索引。
+
+    - None / "" → None（系统默认）
+    - int 或纯数字串 → 当索引用
+    - 名字（同一支麦常在 MME/DirectSound/WASAPI/WDM-KS 下重名）→ 收集所有匹配的
+      输入设备取第一个（通常是 MME，最稳）。**撞名不再抛 "Multiple input devices"**。
+    - 名字匹配不到 → 回退系统默认，至少不崩。
+    """
+    if device is None or device == "" or isinstance(device, bool):
+        return None
+    if isinstance(device, int):
+        return device
+    s = str(device).strip()
+    if s.lstrip("-").isdigit():
+        return int(s)
+    try:
+        devs = list(sd.query_devices())
+    except Exception:
+        return None
+    ins = [i for i, d in enumerate(devs) if (d.get("max_input_channels") or 0) > 0]
+    exact = [i for i in ins if (devs[i].get("name") or "") == s]
+    sub = [i for i in ins if s in (devs[i].get("name") or "")]
+    hit = exact or sub
+    return hit[0] if hit else None
+
+
 class AudioRecorder:
     def __init__(self, cfg: dict, on_frame: Callable[[bytes], None]) -> None:
         a = cfg.get("audio", {})
@@ -40,7 +67,7 @@ class AudioRecorder:
             channels=self.channels,
             blocksize=self.blocksize,
             dtype="int16",
-            device=self._device,
+            device=_resolve_device(self._device),
             callback=self._callback,
         )
         self._stream.start()

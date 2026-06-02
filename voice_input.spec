@@ -54,6 +54,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='assets/icon.ico',
+    version='version_info.txt',   # exe 版本/公司/产品元数据：填上(非空)可降杀软误报
 )
 coll = COLLECT(
     exe, a.binaries, a.datas,
