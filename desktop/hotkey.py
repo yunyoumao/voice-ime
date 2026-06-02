@@ -4,6 +4,8 @@
 - hold（默认）：目标键全部按下触发 on_start，其后任一目标键松开触发 on_stop。
 - toggle：每"按齐一次"翻转一次——按一下开始录音，再按一下结束（适合说长段/总结）。
 - tap：每"按齐一次"触发一次 on_start（忽略松开）——给遥控器"点按"开/选轮盘的循环用。
+- solotap：仅当"单独按下→松开、期间始终没碰别的键"才触发 on_start——让 <ctrl_r> 当触发键，
+  又不误触 Ctrl+Enter / Ctrl+C 等组合（组合时它当普通修饰键，照常放行）。
 可选 suppress：在 Windows 低级键盘钩子里吞掉该键（如音量键），系统收不到 → 不改音量/不翻页，
 但回调照常派发，使带副作用的键也能当干净触发键。
 
@@ -58,9 +60,10 @@ class HotkeyListener:
         self._pressed: set = set()
         self._suppress_vks: set = set()   # 需在系统层吞掉的 vk（如音量键，避免触发时误改音量）
         self._listener: keyboard.Listener | None = None
-        self.add_binding(cfg.get("hotkey", "<alt_r>"),
-                         cfg.get("hotkey_mode", "hold"), on_start, on_stop,
-                         suppress=bool(cfg.get("hotkey_suppress", False)))
+        spec = cfg.get("hotkey", "<alt_r>")
+        if spec:                          # 空字符串/None → 不绑主说话键（仅靠菜单键/音量键触发）
+            self.add_binding(spec, cfg.get("hotkey_mode", "hold"), on_start, on_stop,
+                             suppress=bool(cfg.get("hotkey_suppress", False)))
 
     def add_binding(self, spec: str, mode, on_start, on_stop, suppress: bool = False) -> None:  # noqa: ANN001
         # 修饰键/功能键无需布局还原，构造时直接取 vk 即稳定
@@ -71,7 +74,8 @@ class HotkeyListener:
             "on_start": on_start,
             "on_stop": on_stop,
             "active": False,
-            "combo_down": False,              # toggle/tap 防长按重复
+            "combo_down": False,              # toggle/tap/solotap 防长按重复
+            "solo_clean": False,              # solotap：本次按下期间是否始终没碰别的键
         })
         if suppress:                          # 把该键的 vk 并入"系统层吞掉"集合（如音量键）
             for kind, val in target:
@@ -79,7 +83,11 @@ class HotkeyListener:
                     self._suppress_vks.add(val)
 
     def _handle_press(self, key) -> None:  # noqa: ANN001
-        self._pressed.add(_ident(key, self._listener))
+        kid = _ident(key, self._listener)
+        self._pressed.add(kid)
+        for b in self._binds:                 # solotap：按下"目标外"的键 → 弄脏（是组合，如 Ctrl+Enter，松开不触发）
+            if b["mode"] == "solotap" and b["combo_down"] and kid not in b["target"]:
+                b["solo_clean"] = False
         for b in self._binds:
             if not b["target"].issubset(self._pressed):
                 continue
@@ -92,6 +100,10 @@ class HotkeyListener:
                 if not b["combo_down"]:
                     b["combo_down"] = True
                     b["on_start"]()
+            elif b["mode"] == "solotap":      # 不立即触发；松开时若"按下后没碰别的键"才触发
+                if not b["combo_down"]:
+                    b["combo_down"] = True
+                    b["solo_clean"] = True     # 起步当干净；按下后再碰别的键由上面的"弄脏"逻辑置 False（不依赖_pressed残留状态）
             elif not b["active"]:  # hold
                 b["active"] = True
                 b["on_start"]()
@@ -102,6 +114,12 @@ class HotkeyListener:
             if b["mode"] in ("toggle", "tap"):
                 if kid in b["target"]:
                     b["combo_down"] = False
+            elif b["mode"] == "solotap":
+                if kid in b["target"] and b["combo_down"]:
+                    if b["solo_clean"]:
+                        b["on_start"]()       # 单独按下→松开（期间没碰别的键）= 触发
+                    b["combo_down"] = False
+                    b["solo_clean"] = False
             elif b["active"] and kid in b["target"]:  # hold
                 b["active"] = False
                 b["on_stop"]()
