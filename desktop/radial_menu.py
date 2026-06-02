@@ -61,13 +61,18 @@ def _rgb(h: str) -> tuple[int, int, int]:
 
 
 def _font(px: int, bold: bool = False):
-    """缓存的 YaHei truetype(给 PIL 用)；缺失则退化默认字体。"""
+    """缓存的 truetype(Win:微软雅黑 / Mac:Arial·Helvetica)；都缺失才退化默认字体。"""
     from PIL import ImageFont
     key = (px, bold)
     if key in _FONT_CACHE:
         return _FONT_CACHE[key]
-    cands = (["C:/Windows/Fonts/msyhbd.ttc", "C:/Windows/Fonts/msyh.ttc"] if bold
-             else ["C:/Windows/Fonts/msyh.ttc"])
+    cands = (["C:/Windows/Fonts/msyhbd.ttc", "C:/Windows/Fonts/msyh.ttc",
+              "/System/Library/Fonts/Supplemental/Arial Bold.ttf",      # macOS 粗体
+              "/System/Library/Fonts/Helvetica.ttc",
+              "/System/Library/Fonts/Supplemental/Arial.ttf"] if bold
+             else ["C:/Windows/Fonts/msyh.ttc",
+                   "/System/Library/Fonts/Helvetica.ttc",               # macOS
+                   "/System/Library/Fonts/Supplemental/Arial.ttf"])
     f = None
     for p in cands:
         try:
@@ -76,7 +81,10 @@ def _font(px: int, bold: bool = False):
         except Exception:
             continue
     if f is None:
-        f = ImageFont.load_default()
+        try:
+            f = ImageFont.load_default(size=px)    # PIL≥10：可缩放，避免回退成固定小字
+        except Exception:
+            f = ImageFont.load_default()
     _FONT_CACHE[key] = f
     return f
 
@@ -126,14 +134,14 @@ def _draw_icon(d, idx, cx, cy, r, color):
     elif idx in (2, 3, 4):                               # 译：圆环徽章 + 拉丁码(无汉字)
         code = {2: "ZH", 3: "JA", 4: "EN"}[idx]
         d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=color, width=w)
-        d.text((cx, cy), code, font=_font(int(r * 0.8), bold=True), fill=color, anchor="mm")
+        d.text((cx, cy), code, font=_font(int(r * 0.92), bold=True), fill=color, anchor="mm")
     else:                                                # 列表(总结)：项目符号 + 横线
         for ly in (-0.55, -0.18, 0.19, 0.56):
             d.ellipse((cx - r * 0.92 - w, cy + ly * r - w, cx - r * 0.92 + w, cy + ly * r + w), fill=color)
             d.line((cx - r * 0.6, cy + ly * r, cx + r * 0.78, cy + ly * r), fill=color, width=w)
 
 
-def render_menu_image(size, inner, outer, highlight, theme, glass=False):
+def render_menu_image(size, inner, outer, highlight, theme, glass=False, rgba=False):
     """纯 PIL 渲染环形菜单 → flatten 到 key 色的 RGB 图(不依赖 Tk，可离屏存 PNG 验证)。
     glass=True：静止瓣不填色、留 key(→透出毛玻璃磨砂)，只描边定形 → 整个控制器底儿都是玻璃；
     仅高亮瓣填实色突出。配合窗口亚克力 + set_opacity(key) 使用。"""
@@ -182,8 +190,10 @@ def render_menu_image(size, inner, outer, highlight, theme, glass=False):
     _draw_icon(d, hi if hi is not None else 0, cx, cy, 22 * S, _rgb(theme["hub_text"]))
 
     base = base.resize((size, size), Image.LANCZOS)      # 缩小 = 抗锯齿
+    if rgba:                                             # macOS：直接返回四角透明 RGBA，配合原生 -transparent 窗
+        return base
     flat = Image.new("RGB", (size, size), _rgb(theme["key"]))
-    flat.paste(base, (0, 0), base)                       # 四角=key，随后被 -transparentcolor 抠透
+    flat.paste(base, (0, 0), base)                       # 四角=key，随后被 -transparentcolor 抠透(仅 Windows)
     return flat
 
 
@@ -233,8 +243,8 @@ def _tint_layer(rgb, alpha_mask, scale=1.0):
     return layer
 
 
-def _glass_icons(size, inner, outer, highlight, ss=3):
-    """白图标 + hub 白圈(超采样抗锯齿)，RGBA 透明底。"""
+def _glass_icons(size, inner, outer, highlight, ss=3, icon_r=17, hub_icon_r=22):
+    """白图标 + hub 白圈(超采样抗锯齿)，RGBA 透明底。icon_r/hub_icon_r 控制花瓣/中心图标(含译徽字)大小。"""
     from PIL import Image, ImageDraw
     W = size * ss
     cx = cy = W / 2
@@ -244,20 +254,20 @@ def _glass_icons(size, inner, outer, highlight, ss=3):
     Rm = (inner + outer) / 2 * ss
     for i in range(6):
         a = math.radians(i * 60 + 30)
-        _draw_icon(d, i, cx + Rm * math.cos(a), cy + Rm * math.sin(a), 17 * ss, WHITE_ICON)
+        _draw_icon(d, i, cx + Rm * math.cos(a), cy + Rm * math.sin(a), icon_r * ss, WHITE_ICON)
     hr = (inner - 6) * ss
     d.ellipse((cx - hr, cy - hr, cx + hr, cy + hr), outline=(255, 255, 255, 170), width=int(2 * ss))
-    _draw_icon(d, highlight if highlight is not None else 0, cx, cy, 22 * ss, WHITE_ICON)
+    _draw_icon(d, highlight if highlight is not None else 0, cx, cy, hub_icon_r * ss, WHITE_ICON)
     return ov.resize((size, size), Image.LANCZOS)
 
 
-_GLASS_LAYER_CACHE: dict = {}    # (size,inner,outer,highlight) → (花瓣alpha掩膜, 内容层)；几何相关、与背景无关 → 缓存
+_GLASS_LAYER_CACHE: dict = {}    # (size,inner,outer,highlight,icon_r,hub_icon_r) → (花瓣alpha掩膜, 内容层)；几何相关、与背景无关 → 缓存
 
 
-def _glass_layers(size, inner, outer, highlight):
+def _glass_layers(size, inner, outer, highlight, icon_r=17, hub_icon_r=22):
     """几何相关的(花瓣 alpha 掩膜, 内容层 RGBA)。只随 highlight 变(7种)→ 缓存，避免运行时重算昂贵的 mask。
     内容层 = 白描边 + 白图标 + periwinkle 高亮(填充/柔光/亮描边)，与背景无关，可直接叠到任意磨砂底上。"""
-    key = (size, inner, outer, highlight)
+    key = (size, inner, outer, highlight, icon_r, hub_icon_r)
     cached = _GLASS_LAYER_CACHE.get(key)
     if cached is not None:
         return cached
@@ -277,7 +287,7 @@ def _glass_layers(size, inner, outer, highlight):
     overlay = Image.alpha_composite(overlay, _tint_layer((255, 255, 255), redge, 0.60))    # 静止瓣白描边
     if hedge is not None:
         overlay = Image.alpha_composite(overlay, _tint_layer((210, 218, 255), hedge, 0.95))  # 高亮亮描边
-    overlay = Image.alpha_composite(overlay, _glass_icons(size, inner, outer, highlight))    # 白图标 + hub 圈
+    overlay = Image.alpha_composite(overlay, _glass_icons(size, inner, outer, highlight, icon_r=icon_r, hub_icon_r=hub_icon_r))  # 白图标 + hub 圈
     _GLASS_LAYER_CACHE[key] = (petal_alpha, overlay)
     return petal_alpha, overlay
 
@@ -387,7 +397,14 @@ def render_hud_image(W, H, mode, frame, theme, levels=None, progress=0.0, done=F
 
 
 def cursor_xy() -> tuple[int, int]:
-    """当前鼠标光标屏幕坐标（Windows）。键盘触发菜单时用它定位/命中。"""
+    """当前鼠标光标屏幕坐标。键盘触发菜单时用它定位/命中。"""
+    if sys.platform == "darwin":            # macOS 没有 windll，用 pynput 读鼠标位置(底层 Quartz)
+        try:
+            from pynput.mouse import Controller as _MouseCtl
+            x, y = _MouseCtl().position
+            return int(x), int(y)
+        except Exception:
+            return 0, 0
     try:
         import ctypes
         from ctypes import wintypes
@@ -495,18 +512,40 @@ class RadialMenu:
                         _glass_layers(self._size, self._inner, self._outer, _h)
                 except Exception:
                     pass
-        if not self._glass:                          # 回退：transparentcolor + alpha + canvas(v3)
-            try:
-                self.root.attributes("-transparentcolor", self._key)
-            except Exception:
-                pass
-            try:
-                self.root.attributes("-alpha", 0.96)
-            except Exception:
-                pass
-            self.root.configure(bg=self._key)
-            self._canvas = tk.Canvas(self.root, width=self._size, height=self._size,
-                                     bg=self._key, highlightthickness=0, bd=0)
+        if not self._glass:                          # 回退路径
+            if sys.platform == "darwin":             # macOS：弃 transparentcolor(Win 专属)。noActivates 不抢焦点 + 半透明兜底
+                try:                                 # 关键：窗口不抢焦点，否则上屏 Cmd+V 粘不回你原来的文本框
+                    self.root.tk.call("::tk::unsupported::MacWindowStyle", "style",
+                                      self.root._w, "help", "noActivates")
+                except Exception:
+                    pass
+                try:
+                    self.root.attributes("-transparent", True)   # 试原生透明(成则四角真透)
+                except Exception:
+                    pass
+                try:
+                    self.root.attributes("-alpha", 0.9)          # 整窗半透明兜底(Mac 确定生效)→ 不再是纯黑大框
+                except Exception:
+                    pass
+                self._mac_bg = "systemTransparent"
+                try:
+                    self.root.configure(bg=self._mac_bg)
+                except Exception:
+                    self._mac_bg = "#15162a"; self.root.configure(bg=self._mac_bg)
+                self._canvas = tk.Canvas(self.root, width=self._size, height=self._size,
+                                         bg=self._mac_bg, highlightthickness=0, bd=0)
+            else:                                    # Windows/其他：transparentcolor + alpha + canvas(v3)
+                try:
+                    self.root.attributes("-transparentcolor", self._key)
+                except Exception:
+                    pass
+                try:
+                    self.root.attributes("-alpha", 0.96)
+                except Exception:
+                    pass
+                self.root.configure(bg=self._key)
+                self._canvas = tk.Canvas(self.root, width=self._size, height=self._size,
+                                         bg=self._key, highlightthickness=0, bd=0)
             self._canvas.pack()
         self.root.withdraw()                         # 隐藏 root：玻璃模式它从不显示，仅作 tkinter 机器/HUD 父窗
 
@@ -627,7 +666,8 @@ class RadialMenu:
     # ---------------- 渲染(PIL 抗锯齿) ----------------
     def _draw(self) -> None:
         from PIL import ImageTk
-        flat = render_menu_image(self._size, self._inner, self._outer, self._highlight, self.theme)
+        flat = render_menu_image(self._size, self._inner, self._outer, self._highlight, self.theme,
+                                 rgba=(sys.platform == "darwin"))   # macOS：四角透明 RGBA
         self._photo = ImageTk.PhotoImage(flat)
         if self._img_item is None:
             self._img_item = self._canvas.create_image(0, 0, anchor="nw", image=self._photo)
@@ -693,12 +733,18 @@ class StatusHud:
             except Exception:
                 self._glass = False
         if not self._glass:
+            if sys.platform == "darwin":             # macOS：HUD 也不抢焦点(否则上屏时被它夺焦)
+                try:
+                    self._win.tk.call("::tk::unsupported::MacWindowStyle", "style",
+                                      self._win._w, "help", "noActivates")
+                except Exception:
+                    pass
             try:
-                self._win.attributes("-transparentcolor", self._key)
+                self._win.attributes("-transparentcolor", self._key)   # Windows 抠四角；Mac 静默失败
             except Exception:
                 pass
             try:
-                self._win.attributes("-alpha", 0.97)
+                self._win.attributes("-alpha", 0.88 if sys.platform == "darwin" else 0.97)
             except Exception:
                 pass
             self._win.configure(bg=self._key)

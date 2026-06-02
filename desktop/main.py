@@ -20,7 +20,11 @@ from desktop.config import load_config
 from desktop.hotkey import HotkeyListener
 from desktop.mouse_gesture import MouseGestureListener
 from desktop.output import OutputController
-from desktop.radial_menu import LABELS, MODES, RadialMenu, StatusHud, cursor_xy
+if sys.platform == "darwin":          # macOS：原生 PyObjC 转盘/浮窗(真磨砂、不抢焦点)，接口与 tkinter 版一致
+    from desktop.mac_radial import MacRadialMenu as RadialMenu, MacStatusHud as StatusHud
+    from desktop.radial_menu import LABELS, MODES, cursor_xy
+else:
+    from desktop.radial_menu import LABELS, MODES, RadialMenu, StatusHud, cursor_xy
 from pipeline import build_pipeline
 from pipeline.base import Result
 from sink import build_sinks
