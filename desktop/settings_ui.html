@@ -284,8 +284,14 @@
                 <option value="glm-cli">本地 ask_glm（本机开发用）</option>
                 <option value="openai">OpenAI 兼容</option></select></div>
               <div class="row" id="model_row"><label>模型名</label>
-                <input class="mono" type="text" id="llm_model" list="glm_models" placeholder="glm-4.6">
-                <datalist id="glm_models"><option value="glm-4.6"></option><option value="glm-4-plus"></option><option value="glm-4-air"></option><option value="glm-4-flash"></option><option value="glm-5-turbo"></option></datalist></div>
+                <select id="llm_model">
+                  <option value="glm-4.6">glm-4.6</option>
+                  <option value="glm-4.5">glm-4.5</option>
+                  <option value="glm-4-plus">glm-4-plus</option>
+                  <option value="glm-4-air">glm-4-air</option>
+                  <option value="glm-4-flash">glm-4-flash（快·便宜）</option>
+                  <option value="glm-5-turbo">glm-5-turbo</option>
+                </select></div>
             </div>
             <div class="row cond-glm" id="glm_fields"><label>智谱 API Key</label>
               <input class="mono" type="text" id="llm_api_key" placeholder="留空则读环境变量 ZHIPU_API_KEY"></div>
@@ -398,7 +404,11 @@
     $('gain').value = a.gain ?? 1.0;
     $('provider').value = llm.provider||'glm-http';
     $('llm_api_key').value = llm.api_key||'';
-    $('llm_model').value = llm.model || (llm.glm_cli||{}).model || '';
+    const mdl = llm.model || (llm.glm_cli||{}).model || 'glm-4.6';
+    if(![...$('llm_model').options].some(o => o.value === mdl)){          // 配置里的模型不在预设列表 → 补一个选项
+      const mo = document.createElement('option'); mo.value = mdl; mo.textContent = mdl; $('llm_model').appendChild(mo);
+    }
+    $('llm_model').value = mdl;
     $('default_mode').value = p.default_mode||'polish';
     $('prefix_routing').checked = p.prefix_routing !== false;
     $('output_mode').value = o.mode||'paste';
