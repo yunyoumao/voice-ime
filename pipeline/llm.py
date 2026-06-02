@@ -42,6 +42,11 @@ class LLMClient:
         self.openai_model = oc.get("model", "glm-4.5-air")
         self.api_key = oc.get("api_key") or os.environ.get(oc.get("api_key_env", "ZHIPU_API_KEY"), "")
 
+        oll = llm.get("ollama") or {}                # 本地 Ollama（GPU 推理：快、稳、离线、无网络抖动）
+        self.ollama_url = oll.get("base_url", "http://localhost:11434").rstrip("/") + "/api/chat"
+        self.ollama_model = oll.get("model", "qwen2.5:7b")
+        self.ollama_keep_alive = oll.get("keep_alive", "30m")   # 模型常驻显存时长，避免每次冷加载
+
     async def chat(self, system: str, user: str) -> str:
         if self._sem is None:                        # 首次调用时在运行中的循环里建信号量
             self._sem = asyncio.Semaphore(self.max_concurrency)
@@ -51,6 +56,8 @@ class LLMClient:
     def _chat_sync(self, system: str, user: str) -> str:
         if self.provider == "openai":
             return self._openai(system, user)
+        if self.provider == "ollama":
+            return self._ollama_http(system, user)
         if self.provider in ("glm-http", "glm", "glm-direct"):
             return self._glm_http(system, user)
         return self._glm_cli(system, user)
@@ -119,3 +126,16 @@ class LLMClient:
         if not choices:
             raise RuntimeError("openai 响应无 choices")
         return ((choices[0].get("message") or {}).get("content") or "").strip()
+
+    def _ollama_http(self, system: str, user: str) -> str:
+        # 本地 Ollama /api/chat：GPU 推理，快且稳(无网络抖动)；think=False 关掉思考链以提速。
+        body = json.dumps({
+            "model": self.ollama_model, "stream": False, "think": False,
+            "keep_alive": self.ollama_keep_alive,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "options": {"temperature": 0.2, "num_predict": 1024},
+        }).encode("utf-8")
+        req = urllib.request.Request(self.ollama_url, data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=max(60, self.timeout)) as resp:   # 本地冷加载可能~10s，超时给宽
+            d = json.loads(resp.read())
+        return (d.get("message", {}).get("content") or "").strip()

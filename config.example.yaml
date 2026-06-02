@@ -83,7 +83,7 @@ pipeline:
     use_dict: true           # 加载用户词典（user_dict.json 的术语，纠正同音误识）
     custom_pref: ""          # 个性化偏好（自由文本，注入润色提示，相当于个人记忆）
   llm:
-    provider: glm-http       # glm-http(智谱直连，只需 api_key，推荐分发) | glm-cli(本机调 ask_glm.py) | openai
+    provider: glm-http       # glm-http(智谱直连，只需 api_key，推荐分发) | ollama(本地GPU，最快/离线/无抖动) | glm-cli | openai
     api_key: ""              # glm-http 的智谱 Key；留空则读环境变量 ZHIPU_API_KEY / ANTHROPIC_AUTH_TOKEN
     model: "glm-4.7"         # glm-http 用的模型名（实测最快~1.3s/最稳/Coding Plan 套餐内；留空回退 glm_cli.model）
     timeout: 30              # 单次超时(秒)：超时即失败回退原文，不傻等。单次润色约1.2s，30s 足够长文翻译/总结
@@ -96,6 +96,10 @@ pipeline:
       base_url: "https://open.bigmodel.cn/api/paas/v4"
       api_key_env: "ZHIPU_API_KEY"
       model: "glm-4.5-air"
+    ollama:                  # provider=ollama 时用（本地 Ollama；需先 `ollama pull <model>`，GPU 上约 0.7s、离线、零网络抖动）
+      base_url: "http://localhost:11434"
+      model: "qwen2.5:7b"    # 实测 7B 指令模型质量/速度最佳；qwen3:8b 会吞标点、14b 偏慢
+      keep_alive: "30m"      # 模型常驻显存时长，减少冷加载（首次/久闲后首句约 10s）
 
 # 各模式输出去向：type(上屏)  ［file(写.md)/clipboard 后续上线］
 sinks:
