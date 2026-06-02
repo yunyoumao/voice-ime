@@ -57,6 +57,23 @@ class LocalSenseVoiceASR(StreamingASR):
             language=language,
         )
 
+        # 本地标点模型（CT-Transformer）：识别完即时补标点——直通模式也有标点、不依赖 GLM。
+        # 模型缺失/加载失败则静默跳过，不影响识别主链路。
+        self._punct = None
+        if ec.get("punct", True):
+            punct_dir = os.path.join(root, ec.get(
+                "punct_model", "models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12"))
+            pm = self._sherpa_path(os.path.join(punct_dir, "model.onnx"))
+            if os.path.exists(pm) and (os.name != "nt" or pm.isascii()):
+                try:
+                    self._punct = sherpa_onnx.OfflinePunctuation(
+                        sherpa_onnx.OfflinePunctuationConfig(
+                            model=sherpa_onnx.OfflinePunctuationModelConfig(
+                                ct_transformer=pm, num_threads=1)))
+                    print("✓ 本地标点模型已加载（识别即时补标点）")
+                except Exception as exc:
+                    print(f"⚠️ 标点模型加载失败(跳过，不影响识别)：{exc}")
+
         vad_cfg = sherpa_onnx.VadModelConfig()
         vad_cfg.silero_vad.model = vad_path
         vad_cfg.silero_vad.threshold = 0.35           # 调灵敏：少吞"沁/嘶"这类弱清辅音开头
@@ -146,4 +163,10 @@ class LocalSenseVoiceASR(StreamingASR):
         stream = self._recognizer.create_stream()
         stream.accept_waveform(16000, samples)
         self._recognizer.decode_stream(stream)
-        return stream.result.text
+        text = stream.result.text
+        if self._punct and text.strip():
+            try:
+                text = self._punct.add_punctuation(text)   # 本地补标点（毫秒级，不走网络）
+            except Exception:
+                pass
+        return text

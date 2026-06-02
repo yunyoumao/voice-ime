@@ -113,6 +113,8 @@ engines:
     vad_model: "models/silero_vad.onnx"
     num_threads: 2
     language: "auto"     # auto | zh | en | ja | ko | yue
+    punct: true          # 本地标点模型补标点（直通模式也有标点、不依赖 GLM）；缺模型则自动跳过
+    punct_model: "models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12"
 
   soniox:
     api_key: ""                       # 从 https://console.soniox.com 获取
