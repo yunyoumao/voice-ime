@@ -512,8 +512,9 @@
     const err=validate(); if(err){ setStatus('✗ '+err,'var(--bad)'); return; }
     try{
       await api().save_config(gather());
-      try{ await api().set_autostart($('autostart').checked); }catch(e){}
-      try{ const terms=$('sk_dict').value.split('\n').map(s=>s.trim()).filter(Boolean); await api().save_dict_terms(terms); }catch(e){}
+      const terms=$('sk_dict').value.split('\n').map(s=>s.trim()).filter(Boolean);
+      await api().save_dict_terms(terms);              // 失败要进 catch、别假装已保存
+      try{ await api().set_autostart($('autostart').checked); }catch(e){}   // 开机自启失败不影响配置已存
       setStatus('✓ 已保存 · 重启主程序生效','var(--ok)');
     }catch(e){ setStatus('✗ 保存失败：'+e,'var(--bad)'); }
   }

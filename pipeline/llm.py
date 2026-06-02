@@ -115,4 +115,7 @@ class LLMClient:
         )
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             data = json.loads(resp.read())
-        return data["choices"][0]["message"]["content"].strip()
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError("openai 响应无 choices")
+        return ((choices[0].get("message") or {}).get("content") or "").strip()

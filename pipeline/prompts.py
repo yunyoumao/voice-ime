@@ -54,7 +54,8 @@ def build_polish_system(skills: dict, terms: list) -> str:
     if pref:
         parts.append(f"在不改变原意的前提下，尽量贴合用户的表达习惯：{pref}")
     if s.get("use_dict", True) and terms:
-        parts.append("遇到与下列专有名词/术语发音相近的词，按这里的写法输出：" + "、".join(terms) + "。")
+        joined = "、".join(terms[:200])[:2000]      # 软上限：词典过大会撑爆提示词、浪费 token
+        parts.append("遇到与下列专有名词/术语发音相近的词，按这里的写法输出：" + joined + "。")
     if s.get("structure", False):
         parts.append("内容较长或分点叙述时，可用换行和短横线“- ”组织成清晰结构。")
         md_tail = ""

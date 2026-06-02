@@ -69,5 +69,7 @@ def save_config(cfg: dict, path: str | None = None) -> None:
         raise ValueError("save_config: 缺少保存路径（提供 path 或确保 cfg 含 _config_path）")
     safe = {k: v for k, v in cfg.items() if not k.startswith("_")}
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = path + ".tmp"                                 # 原子写：临时文件 + 替换，避免崩溃/断电截断配置
+    with open(tmp, "w", encoding="utf-8") as f:
         yaml.safe_dump(safe, f, allow_unicode=True, sort_keys=False)
+    os.replace(tmp, path)
