@@ -36,6 +36,41 @@ def _deep_merge(base: dict, upd: dict) -> dict:
     return base
 
 
+# 密钥/凭据字段：界面传来空、但本地已存有值 → 视为未改，保留旧值
+# （防误清，例如误点"载入默认值"后又保存，把已配好的 key 冲掉）
+_SECRET_PATHS = (
+    ("pipeline", "llm", "api_key"),
+    ("engines", "soniox", "api_key"),
+    ("engines", "aliyun", "api_key"),
+    ("engines", "volcano", "app_id"),
+    ("engines", "volcano", "access_token"),
+)
+
+
+def _nested_get(d, path):  # noqa: ANN001, ANN201
+    for k in path:
+        if not isinstance(d, dict):
+            return None
+        d = d.get(k)
+    return d
+
+
+def _keep_secret_if_blanked(old: dict, new: dict) -> None:
+    """new 里某密钥为空但 old 里有值 → 从 new 删掉该键，_deep_merge 时即保留 old 的值。"""
+    for path in _SECRET_PATHS:
+        if str(_nested_get(new, path) or "").strip():
+            continue                        # 界面填了新值 → 照常覆盖
+        if not str(_nested_get(old, path) or "").strip():
+            continue                        # 旧值也空 → 无需保护
+        node = new
+        for k in path[:-1]:
+            node = node.get(k) if isinstance(node, dict) else None
+            if node is None:
+                break
+        if isinstance(node, dict):
+            node.pop(path[-1], None)        # 删掉空键 → _deep_merge 时保留 old 的值
+
+
 class SettingsAPI:
     """pywebview js_api：JS 调 window.pywebview.api.<方法>()。"""
 
@@ -49,7 +84,9 @@ class SettingsAPI:
 
     def save_config(self, new_cfg):
         cfg = load_config()                 # 当前配置(含其他未在界面里的字段)
-        _deep_merge(cfg, new_cfg or {})     # 只覆盖界面改的，保留 audio/remote/mouse_menu/sinks 等
+        new_cfg = new_cfg or {}
+        _keep_secret_if_blanked(cfg, new_cfg)   # 安全网：空值别覆盖已存的密钥/凭据
+        _deep_merge(cfg, new_cfg)           # 只覆盖界面改的，保留 audio/remote/mouse_menu/sinks 等
         save_config(cfg)                    # save_config 会剔除 _* 内部字段
         return True
 
