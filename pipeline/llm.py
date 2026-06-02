@@ -32,6 +32,10 @@ class LLMClient:
         self.glm_python = os.path.expanduser(gc.get("python", "python3"))
         self.glm_script = os.path.expanduser(gc.get("script", "~/.claude/skills/glm-provider/ask_glm.py"))
         self.glm_model = gc.get("model", "glm-4.7")
+        # glm-http 的 key 与模型：key 优先 config(pipeline.llm.api_key)、回退环境变量；
+        # 模型优先 pipeline.llm.model、回退 glm_cli.model（兼容旧配置）。无环境变量的机器也能用。
+        self.glm_http_key = (llm.get("api_key") or "").strip()
+        self.model = llm.get("model") or self.glm_model
 
         oc = llm.get("openai") or {}
         self.base_url = oc.get("base_url", "https://open.bigmodel.cn/api/paas/v4")
@@ -66,10 +70,10 @@ class LLMClient:
     def _glm_http(self, system: str, user: str) -> str:
         # 直连智谱 anthropic 端点：无子进程（省 ~0.5s/次）、不依赖系统 Python 路径。
         # key 取环境变量 ZHIPU_API_KEY / ANTHROPIC_AUTH_TOKEN（与 ask_glm.py 同源）。
-        key = (os.environ.get("ZHIPU_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
+        key = (self.glm_http_key or os.environ.get("ZHIPU_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
         if not key:
             raise RuntimeError("未找到 GLM key（环境变量 ZHIPU_API_KEY 或 ANTHROPIC_AUTH_TOKEN）")
-        body = {"model": self.glm_model, "max_tokens": 1024,
+        body = {"model": self.model, "max_tokens": 1024,
                 "messages": [{"role": "user", "content": user}]}
         if system:
             body["system"] = system

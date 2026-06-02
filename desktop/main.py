@@ -413,13 +413,23 @@ async def _drain_audio(engine, events: asyncio.Queue) -> None:
 
 def main() -> None:
     if sys.stdout is None or sys.stderr is None:   # 打包成 windowed exe 无控制台→stdout/stderr 为 None，
-        import io                                   # 任何 print/write 都会崩 → 重定向到日志文件(可事后排查)
+        import io                                   # 任何 print/write 都会崩 → 按 log_enabled 重定向到文件或丢弃
+        log_enabled = True
         try:
-            from desktop.config import get_user_data_dir
-            os.makedirs(get_user_data_dir(), exist_ok=True)
-            _logf = open(os.path.join(get_user_data_dir(), "voiceinput.log"), "a", encoding="utf-8", buffering=1)
+            from desktop.config import load_config as _load
+            log_enabled = bool(_load().get("log_enabled", True))
         except Exception:
-            _logf = io.StringIO()
+            pass
+        _logf = None
+        if log_enabled:
+            try:
+                from desktop.config import get_user_data_dir
+                os.makedirs(get_user_data_dir(), exist_ok=True)
+                _logf = open(os.path.join(get_user_data_dir(), "voiceinput.log"), "a", encoding="utf-8", buffering=1)
+            except Exception:
+                _logf = None
+        if _logf is None:
+            _logf = io.StringIO()                   # 关日志或打开失败：丢弃但不崩
         sys.stdout = sys.stdout or _logf
         sys.stderr = sys.stderr or _logf
     if "--settings" in sys.argv:                # 打包后用 --settings 复用本 exe 跑设置窗(单 exe 双模式)

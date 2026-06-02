@@ -7,222 +7,466 @@
 <style>
   :root{
     --accent:#a6b3f8; --accent-deep:#8b9bf0;
-    --bg:#101216; --panel:rgba(255,255,255,.032); --line:rgba(255,255,255,.085);
-    --field:rgba(255,255,255,.035); --txt:#e6e8ef; --muted:#8b90a0; --muted2:#646a7a;
+    --bg:#0d0f13; --side:#0a0c10;
+    --panel:rgba(255,255,255,.034); --line:rgba(255,255,255,.08);
+    --field:rgba(255,255,255,.04); --txt:#e7e9f0; --muted:#9398a8; --muted2:#6b7080;
+    --ok:#8fc99a; --bad:#e6918a;
     --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Consolas,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei UI",sans-serif;
+    color-scheme:dark;
   }
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%}
-  body{font-family:var(--sans);color:var(--txt);background:var(--bg);font-size:12px;
+  body{font-family:var(--sans);color:var(--txt);background:var(--bg);font-size:12.5px;
        line-height:1.5;overflow:hidden;-webkit-font-smoothing:antialiased}
-  .app{height:100%;display:flex;flex-direction:column;padding:18px 22px 15px;max-width:860px;margin:0 auto}
+  .app{height:100%;display:flex}
 
-  header{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
-  h1{font-size:17px;font-weight:680;letter-spacing:.2px}
-  h1 b{color:var(--accent);font-weight:680}
-  .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted2);margin-left:auto;letter-spacing:.2px}
+  /* ---- 左侧栏 ---- */
+  .sidebar{width:178px;flex:none;background:var(--side);border-right:1px solid var(--line);
+           display:flex;flex-direction:column;padding:16px 11px}
+  .brand{display:flex;align-items:center;gap:9px;padding:4px 9px 18px;font-size:13.5px;font-weight:700;letter-spacing:.3px}
+  .brand svg{width:18px;height:18px;color:var(--accent)}
+  .nav{display:flex;flex-direction:column;gap:3px}
+  .nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--muted);
+         font-size:12.5px;font-weight:600;cursor:pointer;transition:background .14s,color .14s;user-select:none}
+  .nav a:hover{background:rgba(255,255,255,.05);color:var(--txt)}
+  .nav a.on{background:rgba(166,179,248,.15);color:var(--txt)}
+  .nav a svg{width:16px;height:16px;flex:none;opacity:.9}
+  .side-foot{margin-top:auto;padding:9px;font-family:var(--mono);font-size:9.5px;color:var(--muted2);letter-spacing:.2px}
 
-  .grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;min-height:0;overflow-y:auto}
-  .col{display:flex;flex-direction:column;gap:14px;min-height:0}
+  /* ---- 主区 ---- */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .head{padding:18px 26px 0}
+  .head h1{font-size:16.5px;font-weight:680;letter-spacing:.2px}
+  .head .desc{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .tabs{display:flex;gap:5px;padding:14px 26px 0}
+  .tabs button{padding:7px 15px;border-radius:8px;background:transparent;color:var(--muted);
+               font-size:12px;font-weight:600;border:1px solid transparent;cursor:pointer;font-family:inherit}
+  .tabs button:hover{color:var(--txt)}
+  .tabs button.on{background:var(--panel);color:var(--txt);border-color:var(--line)}
+  .body{flex:1;overflow-y:auto;padding:16px 26px 18px}
+  .page{display:none;height:100%}.page.on{display:block}
+  .subpage{display:none}.subpage.on{display:block}
 
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px 16px;
-         opacity:0;transform:translateY(6px);animation:rise .4s cubic-bezier(.2,.7,.2,1) forwards}
-  .panel:nth-child(2){animation-delay:.07s}
+  /* ---- 面板 / 表单 ---- */
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:13px;
+         opacity:0;transform:translateY(6px);animation:rise .38s cubic-bezier(.2,.7,.2,1) forwards}
+  .panel:nth-child(2){animation-delay:.05s}.panel:nth-child(3){animation-delay:.1s}
   @keyframes rise{to{opacity:1;transform:none}}
-  .ttl{font-size:11.5px;font-weight:700;color:var(--txt);letter-spacing:.2px;
-       padding-bottom:9px;margin-bottom:12px;border-bottom:1px solid var(--line)}
-
-  .row{margin-bottom:11px} .row:last-child{margin-bottom:0}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .ttl{font-size:12px;font-weight:700;letter-spacing:.2px;padding-bottom:9px;margin-bottom:13px;border-bottom:1px solid var(--line);
+       display:flex;align-items:center}
+  .row{margin-bottom:12px}.row:last-child{margin-bottom:0}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.1px}
-  input[type=text],input[type=number],select{width:100%;padding:8px 11px;border:1px solid var(--line);
-    border-radius:8px;background:var(--field);color:var(--txt);font-size:12px;font-family:inherit;
-    outline:none;transition:border-color .15s,box-shadow .15s,background .15s;-webkit-appearance:none;appearance:none}
-  input.mono{font-family:var(--mono);font-size:11.5px;letter-spacing:.3px}
+  input[type=text],input[type=number],input[type=password],select,textarea{width:100%;padding:8px 11px;
+    border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--txt);font-size:12.5px;
+    font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s,background .15s;-webkit-appearance:none;appearance:none}
+  input.mono{font-family:var(--mono);letter-spacing:.3px}
   input::placeholder{color:var(--muted2)}
-  input:focus,select:focus{border-color:var(--accent-deep);background:rgba(166,179,248,.055);
-    box-shadow:0 0 0 3px rgba(166,179,248,.14)}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent-deep);background:rgba(166,179,248,.06);
+    box-shadow:0 0 0 3px rgba(166,179,248,.13)}
   select{cursor:pointer;padding-right:30px;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><path d='M3 4.5L6 7.5L9 4.5' stroke='%238b90a0' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><path d='M3 4.5L6 7.5L9 4.5' stroke='%239398a8' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-repeat:no-repeat;background-position:right 11px center}
-  .hint{font-size:10.5px;color:var(--muted2);margin-top:6px}
-  .check{display:flex;align-items:flex-start;gap:9px;cursor:pointer;color:var(--txt);font-size:11.5px;line-height:1.45}
+  select option{background:#15171d;color:var(--txt)}
+  .hint{font-size:10.5px;color:var(--muted2);margin-top:7px;line-height:1.6}
+  .hint b{color:var(--muted);font-weight:600}
+  .keyrow{display:flex;gap:8px}.keyrow input{flex:1}
+  .rec{padding:8px 13px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;color:var(--txt);
+       font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit}
+  .rec:hover{border-color:var(--accent-deep)}
+  .rec.live{border-color:var(--accent);color:var(--accent)}
+  .check{display:flex;align-items:flex-start;gap:9px;cursor:pointer;color:var(--txt);font-size:12px;line-height:1.5}
   .check input{width:15px;height:15px;margin-top:1px;accent-color:var(--accent);flex:none}
-  .cond{display:none} .cond.on{display:block}
+  .check .sub{color:var(--muted2);font-size:10.5px;display:block;margin-top:2px}
+  .cond{display:none}.cond.on{display:block}
+  .btns{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+  .mini{padding:7px 13px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;color:var(--txt);
+        font-size:11px;font-weight:600;cursor:pointer;font-family:inherit}
+  .mini:hover{background:rgba(255,255,255,.09);border-color:var(--accent-deep)}
+  .note{font-size:11px;color:var(--muted);background:rgba(166,179,248,.06);border:1px solid rgba(166,179,248,.16);
+        border-radius:9px;padding:10px 12px;line-height:1.65;margin-bottom:13px}
+  .note b{color:var(--accent);font-weight:700}
 
-  button{font-family:var(--sans);cursor:pointer;-webkit-appearance:none;appearance:none;border:none;
-         border-radius:8px;font-size:11.5px;font-weight:600;transition:background .15s,border-color .15s,opacity .15s}
-  .btns{display:flex;gap:8px;margin-top:12px}
-  .mini{padding:7px 13px;background:rgba(255,255,255,.045);border:1px solid var(--line);color:var(--txt)}
-  .mini:hover{background:rgba(255,255,255,.085);border-color:var(--accent-deep)}
-
-  footer{display:flex;align-items:center;gap:12px;margin-top:15px;padding-top:13px;border-top:1px solid var(--line)}
-  #status{flex:1;font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.2px;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .ghost{padding:9px 15px;background:transparent;border:1px solid var(--line);color:var(--muted)}
+  /* ---- 保存栏 ---- */
+  .savebar{display:flex;align-items:center;gap:12px;padding:12px 26px;border-top:1px solid var(--line);background:var(--bg)}
+  #status{flex:1;font-family:var(--mono);font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ghost{padding:8px 15px;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--muted);
+         font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit}
   .ghost:hover{color:var(--txt);border-color:var(--accent-deep)}
-  .save{padding:9px 26px;color:var(--bg);background:var(--accent);font-weight:700}
-  .save:hover{opacity:.88}
+  .save{padding:8px 26px;border:none;border-radius:8px;color:#0b0d11;background:var(--accent);font-weight:700;
+        font-size:11.5px;cursor:pointer;font-family:inherit}
+  .save:hover{opacity:.9}
+
+  /* ---- 占位页 ---- */
+  .stub{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:40px}
+  .stub svg{width:34px;height:34px;color:var(--accent);opacity:.55;margin-bottom:14px}
+  .stub h2{font-size:15px;color:var(--txt);margin-bottom:9px;font-weight:680}
+  .stub p{font-size:12px;color:var(--muted);max-width:360px;line-height:1.7}
+  .tag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:5px;background:rgba(166,179,248,.16);
+       color:var(--accent);font-size:9px;font-weight:700;font-family:var(--mono);vertical-align:middle;letter-spacing:.4px}
 </style>
 </head>
 <body>
 <div class="app">
-  <header>
-    <h1>语音输入法 <b>·</b> 设置</h1>
-    <span class="sub">save → restart</span>
-  </header>
+  <!-- ============ 侧栏 ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+      语音输入法
+    </div>
+    <nav class="nav">
+      <a data-page="settings" onclick="nav('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.4" fill="var(--side)"/><circle cx="15" cy="16" r="2.4" fill="var(--side)"/></svg>
+        设置
+      </a>
+      <a data-page="models" onclick="nav('models')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5h3.5M3 14.5h3.5M17.5 9.5H21M17.5 14.5H21"/></svg>
+        模型
+      </a>
+      <a data-page="skills" onclick="nav('skills')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7zM19 14l.8 2.4 2.4.8-2.4.8L19 20.4l-.8-2.4-2.4-.8 2.4-.8z"/></svg>
+        技能
+      </a>
+      <a data-page="history" onclick="nav('history')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+        历史
+      </a>
+    </nav>
+    <div class="side-foot">save → restart</div>
+  </aside>
 
-  <div class="grid">
-    <div class="col">
-      <div class="panel">
-        <div class="ttl">识别引擎</div>
-        <div class="row">
-          <label>引擎</label>
-          <select id="engine" onchange="onEngine()">
-            <option value="local">本地 SenseVoice · 离线免费（推荐）</option>
-            <option value="soniox">Soniox · 逐字实时 · 中英日混合最强</option>
-            <option value="aliyun">阿里百炼</option>
-            <option value="volcano">火山豆包</option>
-          </select>
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+    <div class="body">
+
+      <!-- ===== 设置 ===== -->
+      <section class="page on" id="page-settings">
+        <div class="head" style="padding:0 0 0">
+          <h1>设置</h1>
+          <div class="desc">触发方式、麦克风、系统行为</div>
         </div>
-        <div class="cond on" data-engine="local">
-          <div class="two">
-            <div class="row"><label>识别语言</label>
-              <select id="local_language">
-                <option value="auto">自动</option><option value="zh">中文</option>
-                <option value="en">英文</option><option value="ja">日语</option>
-                <option value="ko">韩语</option><option value="yue">粤语</option>
-              </select>
+        <div class="tabs" style="padding:14px 0 0">
+          <button data-sub="keys" class="on" onclick="subtab('keys')">快捷键</button>
+          <button data-sub="mic" onclick="subtab('mic')">麦克风</button>
+          <button data-sub="sys" onclick="subtab('sys')">系统</button>
+        </div>
+        <div style="padding-top:15px">
+
+          <!-- 快捷键 -->
+          <div class="subpage on" id="sub-keys">
+            <div class="note">
+              三个**独立**的触发键，互不影响：<br>
+              · <b>全局热键</b>＝按住说话（松开上屏）　· <b>环形菜单键</b>＝开六瓣菜单选模式　· <b>遥控器</b>＝蓝牙遥控器的音量键
             </div>
-            <div class="row"><label>线程数</label><input class="mono" type="number" id="local_num_threads" min="1" max="8"></div>
+            <div class="panel">
+              <div class="ttl">键盘</div>
+              <div class="two">
+                <div class="row"><label>全局热键</label>
+                  <div class="keyrow"><input class="mono" type="text" id="hotkey" placeholder="&lt;alt_r&gt;">
+                    <button class="rec" onclick="rec('hotkey',this)">录制</button></div></div>
+                <div class="row"><label>触发方式</label>
+                  <select id="hotkey_mode"><option value="hold">按住说话</option><option value="toggle">点一下开 / 再点停</option></select></div>
+              </div>
+              <div class="row"><label>环形菜单键（开六瓣选模式）</label>
+                <div class="keyrow"><input class="mono" type="text" id="menu_hotkey" placeholder="&lt;ctrl_r&gt;">
+                  <button class="rec" onclick="rec('menu_hotkey',this)">录制</button></div></div>
+            </div>
+            <div class="panel">
+              <div class="ttl">蓝牙遥控器（音量键）</div>
+              <div class="two">
+                <div class="row"><label>说话键（点按开 / 再点停）</label>
+                  <div class="keyrow"><input class="mono" type="text" id="talk_hotkey" placeholder="&lt;media_volume_up&gt;">
+                    <button class="rec" onclick="setKey('talk_hotkey','&lt;media_volume_up&gt;')">填音量+</button></div></div>
+                <div class="row"><label>菜单键（点按开轮盘）</label>
+                  <div class="keyrow"><input class="mono" type="text" id="rmenu_hotkey" placeholder="&lt;media_volume_down&gt;">
+                    <button class="rec" onclick="setKey('rmenu_hotkey','&lt;media_volume_down&gt;')">填音量−</button></div></div>
+              </div>
+              <div class="row"><label class="check"><input type="checkbox" id="remote_suppress">
+                拦截这两个键的原本作用<span class="sub">勾选后按音量键不再改系统音量，只当触发键用</span></label></div>
+              <div class="hint">音量键属系统级，<b>「录制」抓不到它</b> → 直接点上面的 <b>填音量+/−</b>，或手动填键名。其它遥控器键名可跑 <b>scripts/probe_key.py</b> 探测。</div>
+            </div>
           </div>
-          <div class="hint">只说单一语言时设死（如「日语」）比「自动」更准。</div>
-          <div class="btns">
-            <button class="mini" onclick="downloadModels()">下载 / 更新模型</button>
-            <button class="mini" onclick="testEngine()">检查就绪</button>
-          </div>
-        </div>
-        <div class="cond" data-engine="soniox">
-          <div class="row"><label>API Key　*</label><input class="mono" type="text" id="soniox_api_key" placeholder="console.soniox.com"></div>
-          <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
-        </div>
-        <div class="cond" data-engine="aliyun">
-          <div class="row"><label>DashScope API Key　*</label><input class="mono" type="text" id="aliyun_api_key" placeholder="百炼控制台"></div>
-          <div class="row"><label>区域</label>
-            <select id="aliyun_region"><option value="beijing">北京</option><option value="singapore">新加坡</option></select></div>
-          <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
-        </div>
-        <div class="cond" data-engine="volcano">
-          <div class="two">
-            <div class="row"><label>App ID　*</label><input class="mono" type="text" id="volcano_app_id"></div>
-            <div class="row"><label>Access Token　*</label><input class="mono" type="text" id="volcano_access_token"></div>
-          </div>
-          <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
-        </div>
-      </div>
 
-      <div class="panel">
-        <div class="ttl">上屏</div>
-        <div class="row"><label>方式</label><select id="output_mode">
-          <option value="paste">粘贴（推荐）</option><option value="type">逐字模拟键盘</option></select></div>
-      </div>
+          <!-- 麦克风 -->
+          <div class="subpage" id="sub-mic">
+            <div class="panel">
+              <div class="ttl">输入设备</div>
+              <div class="row"><label>麦克风</label><select id="mic_device"><option value="">自动（系统默认）</option></select></div>
+              <div class="row" style="max-width:50%"><label>软件增益（倍）</label><input class="mono" type="number" id="gain" min="0.5" max="12" step="0.5"></div>
+              <div class="hint">远程桌面 / RDP 麦克风偏小声时调大（试 <b>2~6</b>），<b>1.0</b>＝不变。</div>
+            </div>
+            <div class="panel">
+              <div class="ttl">录音</div>
+              <div class="hint">「录音时静音系统扬声器」「录音存盘到目录」将在后续版本加入。</div>
+            </div>
+          </div>
+
+          <!-- 系统 -->
+          <div class="subpage" id="sub-sys">
+            <div class="panel">
+              <div class="ttl">外观与语言</div>
+              <div class="two">
+                <div class="row"><label>主题</label><select id="theme">
+                  <option value="dark">深色</option><option value="light">浅色</option><option value="system">跟随系统</option></select></div>
+                <div class="row"><label>转写语言（仅本地引擎）</label><select id="local_language">
+                  <option value="auto">自动</option><option value="zh">中文</option><option value="en">英文</option>
+                  <option value="ja">日语</option><option value="ko">韩语</option><option value="yue">粤语</option></select></div>
+              </div>
+              <div class="hint">只说单一语言时设死（如「日语」）比「自动」更准。浅色主题为基础版，后续完善。</div>
+            </div>
+            <div class="panel">
+              <div class="ttl">行为</div>
+              <div class="two">
+                <div class="row"><label>上屏方式</label><select id="output_mode">
+                  <option value="paste">粘贴（推荐）</option><option value="type">逐字模拟键盘</option></select></div>
+              </div>
+              <div class="row"><label class="check"><input type="checkbox" id="keep_clipboard">
+                上屏后把转写文本留在剪贴板<span class="sub">方便再次粘贴；不勾选则恢复你原来的剪贴板内容</span></label></div>
+              <div class="row"><label class="check"><input type="checkbox" id="autostart">
+                开机自动启动<span class="sub">登录系统后在托盘静默运行</span></label></div>
+              <div class="row"><label class="check"><input type="checkbox" id="log_enabled">
+                写日志文件<span class="sub">出问题时便于排查；关闭则不写盘</span></label></div>
+              <div class="btns"><button class="mini" onclick="openDataDir()">打开数据目录</button></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ===== 模型 ===== -->
+      <section class="page" id="page-models">
+        <div class="head" style="padding:0"><h1>模型</h1><div class="desc">语音识别引擎 + 润色/翻译用的大模型</div></div>
+        <div style="padding-top:15px">
+          <div class="panel">
+            <div class="ttl">语音识别引擎</div>
+            <div class="row"><label>引擎</label>
+              <select id="engine" onchange="onEngine()">
+                <option value="local">本地 SenseVoice · 离线免费（推荐）</option>
+                <option value="soniox">Soniox · 逐字实时 · 中英日混合最强</option>
+                <option value="aliyun">阿里百炼</option>
+                <option value="volcano">火山豆包</option>
+              </select></div>
+            <div class="cond on" data-engine="local">
+              <div class="row" style="max-width:50%"><label>线程数</label><input class="mono" type="number" id="local_num_threads" min="1" max="8"></div>
+              <div class="hint">识别语言在「设置 · 系统」里调。</div>
+              <div class="btns">
+                <button class="mini" onclick="downloadModels()">下载 / 更新模型</button>
+                <button class="mini" onclick="testEngine()">检查就绪</button>
+              </div>
+            </div>
+            <div class="cond" data-engine="soniox">
+              <div class="row"><label>API Key　*</label><input class="mono" type="text" id="soniox_api_key" placeholder="console.soniox.com"></div>
+              <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
+            </div>
+            <div class="cond" data-engine="aliyun">
+              <div class="two">
+                <div class="row"><label>DashScope API Key　*</label><input class="mono" type="text" id="aliyun_api_key" placeholder="百炼控制台"></div>
+                <div class="row"><label>区域</label><select id="aliyun_region"><option value="beijing">北京</option><option value="singapore">新加坡</option></select></div>
+              </div>
+              <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
+            </div>
+            <div class="cond" data-engine="volcano">
+              <div class="two">
+                <div class="row"><label>App ID　*</label><input class="mono" type="text" id="volcano_app_id"></div>
+                <div class="row"><label>Access Token　*</label><input class="mono" type="text" id="volcano_access_token"></div>
+              </div>
+              <div class="btns"><button class="mini" onclick="testEngine()">测试</button></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="ttl">大模型通道（润色 / 翻译 / 总结）</div>
+            <div class="two">
+              <div class="row"><label>通道</label><select id="provider" onchange="onProvider()">
+                <option value="glm-http">智谱直连（推荐）</option>
+                <option value="glm-cli">本地 ask_glm（本机开发用）</option>
+                <option value="openai">OpenAI 兼容</option></select></div>
+              <div class="row" id="model_row"><label>模型名</label>
+                <input class="mono" type="text" id="llm_model" list="glm_models" placeholder="glm-4.6">
+                <datalist id="glm_models"><option value="glm-4.6"></option><option value="glm-4-plus"></option><option value="glm-4-air"></option><option value="glm-4-flash"></option><option value="glm-5-turbo"></option></datalist></div>
+            </div>
+            <div class="row cond-glm" id="glm_fields"><label>智谱 API Key</label>
+              <input class="mono" type="text" id="llm_api_key" placeholder="留空则读环境变量 ZHIPU_API_KEY"></div>
+            <div class="hint" id="glm_help"><b>智谱直连</b>＝程序直接调智谱，只要一个 API Key，任何电脑都能用（推荐）。<br>
+              <b>本地 ask_glm</b>＝调本机的 ask_glm.py 脚本，只在你的开发机有，分发给别人用不了。</div>
+          </div>
+
+          <div class="panel">
+            <div class="ttl">默认处理</div>
+            <div class="two">
+              <div class="row"><label>默认模式</label><select id="default_mode">
+                <option value="raw">直通原文</option><option value="polish">润色</option><option value="summary">总结</option>
+                <option value="translate_zh">译中</option><option value="translate_en">译英</option><option value="translate_ja">译日</option></select></div>
+            </div>
+            <div class="row" style="margin-top:8px"><label class="check"><input type="checkbox" id="prefix_routing">
+              前缀路由<span class="sub">说「原文…」直通、「润色…」润色、「译英…」翻译，覆盖默认模式</span></label></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 技能（占位） ===== -->
+      <section class="page" id="page-skills">
+        <div class="stub">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l1.7 5 5 1.7-5 1.7-1.7 5-1.7-5-5-1.7 5-1.7zM19 14l.8 2.4 2.4.8-2.4.8L19 20.4l-.8-2.4-2.4-.8 2.4-.8z"/></svg>
+          <h2>技能 <span class="tag">即将上线</span></h2>
+          <p>把润色拆成可单独开关的能力：个性化偏好、用户词典（让「CODEX」这类词不被写错）、自动结构化、口语过滤（去「呃 / 嗯」）、去结尾句号。下一阶段加入。</p>
+        </div>
+      </section>
+
+      <!-- ===== 历史（占位） ===== -->
+      <section class="page" id="page-history">
+        <div class="stub">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+          <h2>历史与统计 <span class="tag">即将上线</span></h2>
+          <p>每次输入的原文与结果会记录在这里，并统计总输入时长、总字数、平均语速。再下一阶段加入。</p>
+        </div>
+      </section>
+
     </div>
 
-    <div class="col">
-      <div class="panel">
-        <div class="ttl">触发</div>
-        <div class="two">
-          <div class="row"><label>全局热键</label><input class="mono" type="text" id="hotkey" placeholder="&lt;alt_r&gt;"></div>
-          <div class="row"><label>方式</label><select id="hotkey_mode">
-            <option value="hold">按住说话</option><option value="toggle">点一下开 / 停</option></select></div>
-        </div>
-        <div class="hint">键名不确定就跑 scripts/probe_key.py 探测。</div>
-      </div>
-
-      <div class="panel">
-        <div class="ttl">处理</div>
-        <div class="two">
-          <div class="row"><label>默认模式</label><select id="default_mode">
-            <option value="raw">直通原文</option><option value="polish">润色</option>
-            <option value="summary">总结</option><option value="translate_zh">译中</option>
-            <option value="translate_en">译英</option><option value="translate_ja">译日</option></select></div>
-          <div class="row"><label>大模型通道</label><select id="provider">
-            <option value="glm-http">智谱直连</option><option value="glm-cli">本地 ask_glm</option>
-            <option value="openai">OpenAI 兼容</option></select></div>
-        </div>
-        <div class="row" style="margin-top:6px"><label class="check"><input type="checkbox" id="prefix_routing">
-          前缀路由：说「原文…」直通、「润色…」润色</label></div>
-      </div>
+    <!-- 保存栏（仅设置/模型页显示） -->
+    <div class="savebar" id="savebar">
+      <span id="status">改完点保存 · 重启主程序生效</span>
+      <button class="ghost" onclick="resetDefault()">恢复默认</button>
+      <button class="save" onclick="save()">保存</button>
     </div>
-  </div>
-
-  <footer>
-    <span id="status">改完点保存 · 重启生效</span>
-    <button class="ghost" onclick="resetDefault()">恢复默认</button>
-    <button class="save" onclick="save()">保存</button>
-  </footer>
+  </main>
 </div>
 
 <script>
   const $ = id => document.getElementById(id);
   const api = () => window.pywebview.api;
 
+  function nav(page){
+    document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on', a.dataset.page===page));
+    document.querySelectorAll('.page').forEach(p=>p.classList.toggle('on', p.id==='page-'+page));
+    $('savebar').style.display = (page==='settings'||page==='models') ? 'flex' : 'none';
+    try{ location.hash = page; }catch(e){}
+  }
+  function subtab(name){
+    document.querySelectorAll('#page-settings .tabs button').forEach(b=>b.classList.toggle('on', b.dataset.sub===name));
+    document.querySelectorAll('#page-settings .subpage').forEach(s=>s.classList.toggle('on', s.id==='sub-'+name));
+  }
+  function onEngine(){ const e=$('engine').value; document.querySelectorAll('.cond').forEach(el=>el.classList.toggle('on', el.dataset.engine===e)); }
+  function onProvider(){ const v=$('provider').value; const glm=(v==='glm-http'||v==='openai');
+    $('glm_fields').style.display = glm?'block':'none';
+    $('glm_help').style.display = (v==='glm-cli')?'block':(v==='glm-http'?'block':'none'); }
+
   function fill(cfg){
-    $("engine").value = cfg.engine || "local";
-    const en = cfg.engines || {};
-    $("local_language").value = (en.local||{}).language || "auto";
-    $("local_num_threads").value = (en.local||{}).num_threads ?? 2;
-    $("soniox_api_key").value = (en.soniox||{}).api_key || "";
-    $("aliyun_api_key").value = (en.aliyun||{}).api_key || "";
-    $("aliyun_region").value = (en.aliyun||{}).region || "beijing";
-    $("volcano_app_id").value = (en.volcano||{}).app_id || "";
-    $("volcano_access_token").value = (en.volcano||{}).access_token || "";
-    $("hotkey").value = cfg.hotkey || "<alt_r>";
-    $("hotkey_mode").value = cfg.hotkey_mode || "hold";
-    const p = cfg.pipeline || {};
-    $("default_mode").value = p.default_mode || "polish";
-    $("prefix_routing").checked = p.prefix_routing !== false;
-    $("provider").value = (p.llm||{}).provider || "glm-http";
-    $("output_mode").value = (cfg.output||{}).mode || "paste";
-    onEngine();
+    cfg = cfg || {};
+    const en=cfg.engines||{}, p=cfg.pipeline||{}, llm=p.llm||{}, a=cfg.audio||{}, r=cfg.remote||{}, o=cfg.output||{}, mm=cfg.mouse_menu||{};
+    $('engine').value = cfg.engine||'local';
+    $('local_language').value = (en.local||{}).language||'auto';
+    $('local_num_threads').value = (en.local||{}).num_threads ?? 2;
+    $('soniox_api_key').value = (en.soniox||{}).api_key||'';
+    $('aliyun_api_key').value = (en.aliyun||{}).api_key||'';
+    $('aliyun_region').value = (en.aliyun||{}).region||'beijing';
+    $('volcano_app_id').value = (en.volcano||{}).app_id||'';
+    $('volcano_access_token').value = (en.volcano||{}).access_token||'';
+    $('hotkey').value = cfg.hotkey||'<alt_r>';
+    $('hotkey_mode').value = cfg.hotkey_mode||'hold';
+    $('menu_hotkey').value = mm.hotkey||'';
+    $('talk_hotkey').value = r.talk_hotkey||'';
+    $('rmenu_hotkey').value = r.menu_hotkey||'';
+    $('remote_suppress').checked = r.suppress !== false;
+    $('gain').value = a.gain ?? 1.0;
+    $('provider').value = llm.provider||'glm-http';
+    $('llm_api_key').value = llm.api_key||'';
+    $('llm_model').value = llm.model || (llm.glm_cli||{}).model || '';
+    $('default_mode').value = p.default_mode||'polish';
+    $('prefix_routing').checked = p.prefix_routing !== false;
+    $('output_mode').value = o.mode||'paste';
+    $('keep_clipboard').checked = o.restore_clipboard === false;
+    $('theme').value = cfg.theme||'dark';
+    $('log_enabled').checked = cfg.log_enabled !== false;
+    onEngine(); onProvider();
+    loadDevices(a.device);
+    if(window.pywebview){ api().is_autostart_enabled().then(v=>{$('autostart').checked=!!v;}).catch(()=>{}); }
   }
-  function onEngine(){
-    const e = $("engine").value;
-    document.querySelectorAll(".cond").forEach(el => el.classList.toggle("on", el.dataset.engine === e));
+
+  function loadDevices(cur){
+    const sel = $('mic_device');
+    if(!window.pywebview){ return; }
+    api().list_input_devices().then(list=>{
+      sel.innerHTML = '<option value="">自动（系统默认）</option>';
+      (list||[]).forEach(d=>{ const o=document.createElement('option'); o.value=d.name; o.textContent=d.name; sel.appendChild(o); });
+      sel.value = (typeof cur==='string' && cur) ? cur : '';
+    }).catch(()=>{});
   }
+
   function gather(){
+    const dev = $('mic_device').value;
     return {
-      engine: $("engine").value, hotkey: $("hotkey").value.trim(), hotkey_mode: $("hotkey_mode").value,
-      pipeline:{ default_mode:$("default_mode").value, prefix_routing:$("prefix_routing").checked,
-                 llm:{ provider:$("provider").value } },
-      output:{ mode:$("output_mode").value },
+      engine:$('engine').value,
+      hotkey:$('hotkey').value.trim(), hotkey_mode:$('hotkey_mode').value,
+      theme:$('theme').value, log_enabled:$('log_enabled').checked,
+      audio:{ gain:parseFloat($('gain').value)||1.0, device: dev===''? null : dev },
+      remote:{ talk_hotkey:$('talk_hotkey').value.trim(), menu_hotkey:$('rmenu_hotkey').value.trim(), suppress:$('remote_suppress').checked },
+      mouse_menu:{ hotkey:$('menu_hotkey').value.trim() },
+      output:{ mode:$('output_mode').value, restore_clipboard: !$('keep_clipboard').checked },
+      pipeline:{ default_mode:$('default_mode').value, prefix_routing:$('prefix_routing').checked,
+                 llm:{ provider:$('provider').value, api_key:$('llm_api_key').value.trim(), model:$('llm_model').value.trim() } },
       engines:{
-        local:{ language:$("local_language").value, num_threads:parseInt($("local_num_threads").value)||2 },
-        soniox:{ api_key:$("soniox_api_key").value.trim() },
-        aliyun:{ api_key:$("aliyun_api_key").value.trim(), region:$("aliyun_region").value },
-        volcano:{ app_id:$("volcano_app_id").value.trim(), access_token:$("volcano_access_token").value.trim() } }
+        local:{ language:$('local_language').value, num_threads:parseInt($('local_num_threads').value)||2 },
+        soniox:{ api_key:$('soniox_api_key').value.trim() },
+        aliyun:{ api_key:$('aliyun_api_key').value.trim(), region:$('aliyun_region').value },
+        volcano:{ app_id:$('volcano_app_id').value.trim(), access_token:$('volcano_access_token').value.trim() } }
     };
   }
   function validate(){
-    const e = $("engine").value;
-    if(e==="soniox" && !$("soniox_api_key").value.trim()) return "Soniox 需要 API Key";
-    if(e==="aliyun" && !$("aliyun_api_key").value.trim()) return "阿里需要 API Key";
-    if(e==="volcano" && (!$("volcano_app_id").value.trim()||!$("volcano_access_token").value.trim())) return "火山需要 App ID 和 Access Token";
+    const e=$('engine').value;
+    if(e==='soniox' && !$('soniox_api_key').value.trim()) return 'Soniox 需要 API Key';
+    if(e==='aliyun' && !$('aliyun_api_key').value.trim()) return '阿里需要 API Key';
+    if(e==='volcano' && (!$('volcano_app_id').value.trim()||!$('volcano_access_token').value.trim())) return '火山需要 App ID 和 Access Token';
     return null;
   }
-  function setStatus(t,c){ const s=$("status"); s.textContent=t; s.style.color=c||"var(--muted)"; }
+  function setStatus(t,c){ const s=$('status'); s.textContent=t; s.style.color=c||'var(--muted)'; }
+
   async function save(){
-    const err=validate(); if(err){ setStatus("✗ "+err,"#e6918a"); return; }
-    try{ await api().save_config(gather()); setStatus("✓ 已保存 · 重启生效","#8fc99a"); }
-    catch(e){ setStatus("✗ 保存失败："+e,"#e6918a"); }
+    const err=validate(); if(err){ setStatus('✗ '+err,'var(--bad)'); return; }
+    try{
+      await api().save_config(gather());
+      try{ await api().set_autostart($('autostart').checked); }catch(e){}
+      setStatus('✓ 已保存 · 重启主程序生效','var(--ok)');
+    }catch(e){ setStatus('✗ 保存失败：'+e,'var(--bad)'); }
   }
-  async function testEngine(){ try{ setStatus(await api().test_engine($("engine").value),"var(--accent)"); }catch(e){ setStatus("✗ "+e,"#e6918a"); } }
-  async function downloadModels(){ try{ setStatus(await api().download_models(),"var(--accent)"); }catch(e){ setStatus("✗ "+e,"#e6918a"); } }
-  async function resetDefault(){ try{ fill(await api().get_default_config()); setStatus("已载入默认值（未保存）"); }catch(e){ setStatus("✗ "+e,"#e6918a"); } }
-  window.addEventListener("pywebviewready", async () => {
-    try{ fill(await api().get_config()); }catch(e){ setStatus("载入配置失败："+e,"#e6918a"); }
+  async function testEngine(){ try{ setStatus(await api().test_engine($('engine').value),'var(--accent)'); }catch(e){ setStatus('✗ '+e,'var(--bad)'); } }
+  async function downloadModels(){ try{ setStatus(await api().download_models(),'var(--accent)'); }catch(e){ setStatus('✗ '+e,'var(--bad)'); } }
+  async function openDataDir(){ try{ await api().open_data_dir(); }catch(e){} }
+  async function resetDefault(){ try{ fill(await api().get_default_config()); setStatus('已载入默认值（未保存）'); }catch(e){ setStatus('✗ '+e,'var(--bad)'); } }
+
+  // 快捷键录制：捕获一次 keydown → 映射成 pynput 键名
+  function rec(id, btn){
+    btn.classList.add('live'); btn.textContent='按下按键…';
+    const done = ()=>{ btn.classList.remove('live'); btn.textContent='录制'; window.removeEventListener('keydown',h,true); };
+    const h = (e)=>{ e.preventDefault(); e.stopPropagation(); const spec=keyToSpec(e); if(spec){ $(id).value=spec; } done(); };
+    window.addEventListener('keydown', h, true);
+    setTimeout(()=>{ if(btn.classList.contains('live')) done(); }, 6000);
+  }
+  function keyToSpec(e){
+    const c=e.code, map={
+      AltRight:'<alt_r>',AltLeft:'<alt_l>',ControlRight:'<ctrl_r>',ControlLeft:'<ctrl_l>',
+      ShiftRight:'<shift_r>',ShiftLeft:'<shift_l>',MetaRight:'<cmd_r>',MetaLeft:'<cmd_l>',
+      Space:'<space>',Enter:'<enter>',Tab:'<tab>',Escape:'<esc>',CapsLock:'<caps_lock>',
+      AudioVolumeUp:'<media_volume_up>',AudioVolumeDown:'<media_volume_down>',AudioVolumeMute:'<media_volume_mute>'
+    };
+    if(map[c]) return map[c];
+    if(/^F\d{1,2}$/.test(c)) return '<'+c.toLowerCase()+'>';
+    if(/^Key[A-Z]$/.test(c)) return c.slice(3).toLowerCase();
+    if(/^Digit\d$/.test(c)) return c.slice(5);
+    return null;
+  }
+
+  window.addEventListener('pywebviewready', async ()=>{
+    try{ fill(await api().get_config()); }catch(e){ setStatus('载入配置失败：'+e,'var(--bad)'); }
   });
+  // 初始导航（hash 优先）
+  (function(){
+    const h=(location.hash||'').replace('#','');
+    nav(['settings','models','skills','history'].includes(h)?h:'settings');
+    subtab('keys');
+  })();
 </script>
 </body>
 </html>

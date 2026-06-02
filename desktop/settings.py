@@ -69,12 +69,59 @@ class SettingsAPI:
         threading.Thread(target=lambda: dl(os.path.join(base, "models")), daemon=True).start()
         return "已在后台开始下载，完成后重启生效"
 
+    # ---- 阶段1 新增：麦克风枚举 / 开机自启 / 打开数据目录 ----
+    def list_input_devices(self):
+        """枚举可用输入设备 [{index, name}]，供麦克风下拉（按名字去重）。"""
+        try:
+            import sounddevice as sd
+        except Exception:
+            return []
+        out, seen = [], set()
+        try:
+            for i, d in enumerate(sd.query_devices()):
+                if (d.get("max_input_channels") or 0) <= 0:
+                    continue
+                name = (d.get("name") or f"设备 {i}").strip()
+                if name in seen:
+                    continue
+                seen.add(name)
+                out.append({"index": i, "name": name})
+        except Exception:
+            return []
+        return out
+
+    def set_autostart(self, enabled):
+        from desktop.autostart import set_autostart as _set
+        return _set(bool(enabled))
+
+    def is_autostart_enabled(self):
+        from desktop.autostart import is_enabled
+        return is_enabled()
+
+    def open_data_dir(self):
+        """在文件管理器里打开用户数据目录（%APPDATA%\\VoiceInput）。"""
+        from desktop.config import get_user_data_dir
+        d = get_user_data_dir()
+        try:
+            os.makedirs(d, exist_ok=True)
+            if sys.platform == "win32":
+                os.startfile(d)                      # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", d])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", d])
+            return True
+        except Exception:
+            return False
+
 
 def main():
     import webview
     api = SettingsAPI()
     webview.create_window("语音输入法 · 设置", HTML, js_api=api,
-                          width=860, height=545, background_color="#101216")
+                          width=960, height=640, background_color="#0d0f13")
     webview.start()
 
 
