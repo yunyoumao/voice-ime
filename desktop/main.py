@@ -82,6 +82,16 @@ async def run() -> None:
         sink = sinks.get(result.sink) or sinks["type"]
         await sink.emit(result)
 
+    def _record(raw: str, res, secs: float) -> None:
+        # 写历史 + 统计（后台进程独占写）；失败静默，绝不影响识别→上屏主链路。
+        try:
+            from desktop import history, stats
+            history.append(raw, res.text, res.mode, secs)
+            stats.bump(secs, len(res.text or ""))
+        except Exception as exc:
+            sys.stdout.write(f"   [历史记录失败] {exc}\n")
+            sys.stdout.flush()
+
     async def _final_worker() -> None:
         # 整段聚合：识别片段(seg)累积到 buf，停录后收到 flush → 整段拼成一句发 GLM 一次。
         # 一段一次调用：上下文完整(润色/翻译更连贯、总结才成立)，且零并发 → 不触发智谱限流。
@@ -92,15 +102,19 @@ async def run() -> None:
                 if kind == "seg":
                     if payload:
                         buf.append(payload)
-                elif kind == "flush":                     # payload = 本段锁定模式(forced 快照)
+                elif kind == "flush":                     # payload = (本段锁定模式, 录音秒数)
+                    fmode, secs = payload
                     text = " ".join(s for s in buf if s).strip()
                     buf.clear()
-                    if not text or payload is _CANCEL:    # 没识别出内容 / 取消 → 直接收起
+                    if not text or fmode is _CANCEL:      # 没识别出内容 / 取消 → 直接收起
                         set_status("off")
                     else:
                         inflight["n"] += 1
                         try:
-                            await _emit_result(await _compute_result(text, payload))
+                            res = await _compute_result(text, fmode)
+                            await _emit_result(res)
+                            if res is not None:
+                                _record(text, res, secs)   # 写历史+统计(失败不影响主链路)
                         except Exception as exc:
                             sys.stdout.write(f"   [处理异常] {exc}\n")
                             sys.stdout.flush()
@@ -359,6 +373,7 @@ async def run() -> None:
                     for frame in preroll:             # 先补按下前的音频，再录实时
                         await engine.feed(frame)
                     rec["on"] = True
+                    rec["t0"] = loop.time()           # 录音起点(算时长用)
                     seg_frames, seg_peak = 0, 0
                 elif data == "STOP" and rec["on"]:
                     rec["on"] = False
@@ -367,7 +382,8 @@ async def run() -> None:
                     await _drain_audio(engine, events)
                     await engine.stop()
                     # 整段一次发：把本段所有识别片段拼成一句发 GLM(call_soon 排在所有 seg 之后→FIFO)。
-                    loop.call_soon(finals.put_nowait, ("flush", forced["mode"]))
+                    secs = max(0.0, loop.time() - rec.get("t0", loop.time()))   # 本段录音时长
+                    loop.call_soon(finals.put_nowait, ("flush", (forced["mode"], secs)))
                     loop.call_later(2.5, _clear_hud_if_idle)   # 没识别出内容时兜底收起"处理中"
                     preroll.clear()                   # 清空，避免话尾混入下次开头
                     level = int(seg_peak * 100 / 32768)

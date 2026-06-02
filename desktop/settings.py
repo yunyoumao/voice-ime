@@ -125,6 +125,19 @@ class SettingsAPI:
         from desktop.user_dict import save_terms
         return save_terms(terms)
 
+    # ---- 阶段3 新增：历史 / 统计 ----
+    def get_history(self, page=0, limit=20):
+        from desktop import history
+        return history.read(int(page or 0), int(limit or 20))
+
+    def get_stats(self):
+        from desktop import stats
+        return stats.load()
+
+    def clear_history(self):
+        from desktop import history
+        return history.clear()
+
 
 def main():
     import webview

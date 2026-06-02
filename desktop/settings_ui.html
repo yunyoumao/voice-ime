@@ -106,6 +106,19 @@
   .stub p{font-size:12px;color:var(--muted);max-width:360px;line-height:1.7}
   .tag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:5px;background:rgba(166,179,248,.16);
        color:var(--accent);font-size:9px;font-weight:700;font-family:var(--mono);vertical-align:middle;letter-spacing:.4px}
+  /* 主页统计 + 历史表 */
+  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:17px 18px}
+  .stat .num{font-family:var(--mono);font-size:25px;font-weight:700;color:var(--accent);line-height:1}
+  .stat .lab{font-size:11px;color:var(--muted);margin-top:7px}
+  .htbl{width:100%;border-collapse:collapse;font-size:11.5px}
+  .htbl th{text-align:left;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .htbl td{padding:8px 10px;border-bottom:1px solid var(--line);color:var(--txt);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .htbl td.m{font-family:var(--mono);color:var(--muted);white-space:nowrap}
+  .hempty{color:var(--muted2);font-size:12px;text-align:center;padding:34px}
+  .hpager{display:flex;align-items:center;gap:10px;margin-top:13px}
+  #hinfo{font-size:10.5px;color:var(--muted);font-family:var(--mono)}
+  .mini:disabled{opacity:.4;cursor:default}
 </style>
 </head>
 <body>
@@ -117,6 +130,10 @@
       语音输入法
     </div>
     <nav class="nav">
+      <a data-page="home" onclick="nav('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 11l8-7 8 7M6 9.5V20h12V9.5"/></svg>
+        主页
+      </a>
       <a data-page="settings" onclick="nav('settings')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="10" cy="8" r="2.4" fill="var(--side)"/><circle cx="15" cy="16" r="2.4" fill="var(--side)"/></svg>
         设置
@@ -141,8 +158,22 @@
   <main class="main">
     <div class="body">
 
+      <!-- ===== 主页 ===== -->
+      <section class="page on" id="page-home">
+        <div class="head" style="padding:0"><h1>主页</h1><div class="desc">使用概览</div></div>
+        <div style="padding-top:15px">
+          <div class="stats">
+            <div class="stat"><div class="num" id="st_count">—</div><div class="lab">总输入次数</div></div>
+            <div class="stat"><div class="num" id="st_mins">—</div><div class="lab">累计录音（分钟）</div></div>
+            <div class="stat"><div class="num" id="st_chars">—</div><div class="lab">累计字数</div></div>
+            <div class="stat"><div class="num" id="st_cpm">—</div><div class="lab">平均语速（字/分）</div></div>
+          </div>
+          <div class="btns" style="margin-top:14px"><button class="mini" onclick="loadStats()">刷新</button><button class="mini" onclick="openDataDir()">打开数据目录</button></div>
+        </div>
+      </section>
+
       <!-- ===== 设置 ===== -->
-      <section class="page on" id="page-settings">
+      <section class="page" id="page-settings">
         <div class="head" style="padding:0 0 0">
           <h1>设置</h1>
           <div class="desc">触发方式、麦克风、系统行为</div>
@@ -345,12 +376,18 @@
         </div>
       </section>
 
-      <!-- ===== 历史（占位） ===== -->
+      <!-- ===== 历史 ===== -->
       <section class="page" id="page-history">
-        <div class="stub">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
-          <h2>历史与统计 <span class="tag">即将上线</span></h2>
-          <p>每次输入的原文与结果会记录在这里，并统计总输入时长、总字数、平均语速。再下一阶段加入。</p>
+        <div class="head" style="padding:0"><h1>历史</h1><div class="desc">每次语音输入的原文与结果</div></div>
+        <div style="padding-top:13px">
+          <table class="htbl"><thead><tr><th style="width:108px">时间</th><th style="width:60px">模式</th><th>原文</th><th>结果</th></tr></thead><tbody id="hbody"></tbody></table>
+          <div id="hempty" class="hempty">还没有记录。按住右 Alt 说几句话试试。</div>
+          <div class="hpager">
+            <button class="mini" id="hprev" onclick="histPage(-1)">上一页</button>
+            <span id="hinfo"></span>
+            <button class="mini" id="hnext" onclick="histPage(1)">下一页</button>
+            <button class="ghost" style="margin-left:auto" onclick="clearHistory()">清空历史</button>
+          </div>
         </div>
       </section>
 
@@ -373,6 +410,8 @@
     document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('on', a.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('on', p.id==='page-'+page));
     $('savebar').style.display = (page==='settings'||page==='models'||page==='skills') ? 'flex' : 'none';
+    if(page==='home') loadStats();
+    if(page==='history') loadHistory(0);
     try{ location.hash = page; }catch(e){}
   }
   function subtab(name){
@@ -505,13 +544,51 @@
     return null;
   }
 
+  // 主页统计 + 历史
+  async function loadStats(){
+    if(!window.pywebview) return;
+    try{ const s=await api().get_stats();
+      $('st_count').textContent = s.count||0;
+      $('st_mins').textContent  = ((s.total_secs||0)/60).toFixed(1);
+      $('st_chars').textContent = s.total_chars||0;
+      $('st_cpm').textContent   = s.avg_cpm||0;
+    }catch(e){}
+  }
+  let _hpage = 0;
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function fmtTs(s){ return String(s||'').replace('T',' ').slice(0,16); }
+  async function loadHistory(p){
+    if(!window.pywebview) return;
+    _hpage = Math.max(0, p||0);
+    try{
+      const r = await api().get_history(_hpage, 20);
+      const tb = $('hbody'); tb.innerHTML = '';
+      (r.items||[]).forEach(it=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="m">'+esc(fmtTs(it.ts))+'</td><td class="m">'+esc(it.mode||'')+'</td>'+
+                       '<td title="'+esc(it.text||'')+'">'+esc(it.text||'')+'</td>'+
+                       '<td title="'+esc(it.result||'')+'">'+esc(it.result||'')+'</td>';
+        tb.appendChild(tr);
+      });
+      $('hempty').style.display = r.total ? 'none' : 'block';
+      $('hinfo').textContent = r.total ? ((_hpage+1)+' / '+(r.pages||1)+' · 共 '+r.total+' 条') : '';
+      $('hprev').disabled = _hpage<=0;
+      $('hnext').disabled = _hpage >= (r.pages-1);
+    }catch(e){}
+  }
+  function histPage(d){ loadHistory(_hpage + d); }
+  async function clearHistory(){
+    if(!confirm('确定清空全部历史记录？此操作不可撤销。')) return;
+    try{ await api().clear_history(); loadHistory(0); loadStats(); }catch(e){}
+  }
+
   window.addEventListener('pywebviewready', async ()=>{
     try{ fill(await api().get_config()); }catch(e){ setStatus('载入配置失败：'+e,'var(--bad)'); }
   });
   // 初始导航（hash 优先）
   (function(){
     const h=(location.hash||'').replace('#','');
-    nav(['settings','models','skills','history'].includes(h)?h:'settings');
+    nav(['home','settings','models','skills','history'].includes(h)?h:'home');
     subtab('keys');
   })();
 </script>
