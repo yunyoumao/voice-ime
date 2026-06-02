@@ -313,7 +313,8 @@
               <div class="row"><label>通道</label><select id="provider" onchange="onProvider()">
                 <option value="glm-http">智谱直连（推荐）</option>
                 <option value="glm-cli">本地 ask_glm（本机开发用）</option>
-                <option value="openai">OpenAI 兼容</option></select></div>
+                <option value="openai">OpenAI 兼容</option>
+                <option value="ollama">本地 Ollama（GPU/离线/最快，需先 ollama pull）</option></select></div>
               <div class="row" id="model_row"><label>模型名</label>
                 <select id="llm_model">
                   <option value="glm-4.6">glm-4.6</option>
