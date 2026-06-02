@@ -18,9 +18,11 @@ for pkg in ("sherpa_onnx", "sounddevice", "webview"):
 hiddenimports = [
     # 引擎/管线/上屏 是按 config 动态导入的，PyInstaller 静态扫不到 → 显式声明
     "asr.local_sensevoice", "asr.soniox_engine", "asr.aliyun_engine", "asr.volcano_engine",
-    "pipeline.polish", "pipeline.summarize", "pipeline.translate", "pipeline.passthrough",
+    "pipeline.polish", "pipeline.summarize", "pipeline.translate", "pipeline.passthrough", "pipeline.prompts",
     "sink.type_sink",
     "desktop.settings", "desktop.tray", "desktop.download_prompt", "scripts.download_model",
+    # 阶段2/3 新增：均为函数内懒加载(main._record / settings 各方法)，静态扫不到 → 显式声明
+    "desktop.history", "desktop.stats", "desktop.user_dict", "desktop.autostart",
 ]
 hiddenimports += collect_submodules("sherpa_onnx")
 hiddenimports += collect_submodules("webview")     # pywebview 后端(winforms/edgechromium)
