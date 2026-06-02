@@ -389,6 +389,23 @@ async def run() -> None:
                 print(f"   [配置热重载异常] {exc}")
 
     watch_task = asyncio.create_task(_watch_config())
+
+    # 开机预热 + 定时保温：provider=ollama 时，启动即把本地模型载入显存，并每 ~20 分钟空跑一次保持常驻，
+    # 彻底消除"首句/久闲后冷加载(~10s)"；app 关闭后约 keep_alive 时长自然释放显存。失败静默。
+    warm_task = None
+    if str(((cfg.get("pipeline") or {}).get("llm") or {}).get("provider", "")).lower() == "ollama":
+        async def _keep_warm() -> None:
+            first = True
+            while True:
+                try:
+                    await pipeline.run("预热", force_mode="polish")
+                    if first:
+                        print("🔥 本地润色模型已预热（首句不再冷启动）")
+                        first = False
+                except Exception:
+                    pass
+                await asyncio.sleep(1200)   # 20 分钟保温一次（< keep_alive，确保常驻显存）
+        warm_task = asyncio.create_task(_keep_warm())
     tray = tray_task = None
     try:                                                  # 系统托盘(打开设置/退出)：阻塞的 run() 放后台线程
         from desktop.tray import TrayIcon
@@ -447,6 +464,8 @@ async def run() -> None:
             tray_task.cancel()
         worker_task.cancel()
         watch_task.cancel()
+        if warm_task is not None:
+            warm_task.cancel()
         if gesture is not None:
             gesture.stop()
         if pump_task is not None:
