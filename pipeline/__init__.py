@@ -15,14 +15,16 @@ def build_pipeline(cfg: dict) -> Pipeline:
     default_mode = pcfg.get("default_mode", "polish")
     routing = bool(pcfg.get("prefix_routing", True))
 
-    llm = LLMClient(cfg)
+    llm = LLMClient(cfg)                                          # 默认通道(润色用)
+    tp = (pcfg.get("llm") or {}).get("translate_provider")       # 翻译/总结专用通道(留空=同默认)
+    llm_t = LLMClient(cfg, provider_override=tp) if tp else llm   # 翻译/总结可走 GLM(日语长文更稳)
     processors = {
         "raw": PassthroughProcessor(),
-        "polish": PolishProcessor(llm, cfg),
-        "translate_zh": TranslateProcessor(llm, "translate_zh", "中文"),
-        "translate_ja": TranslateProcessor(llm, "translate_ja", "日语"),
-        "translate_en": TranslateProcessor(llm, "translate_en", "英语"),
-        "summary": SummarizeProcessor(llm),
+        "polish": PolishProcessor(llm, cfg),                     # 润色→默认通道(可本地，快/离线)
+        "translate_zh": TranslateProcessor(llm_t, "translate_zh", "中文"),
+        "translate_ja": TranslateProcessor(llm_t, "translate_ja", "日语"),
+        "translate_en": TranslateProcessor(llm_t, "translate_en", "英语"),
+        "summary": SummarizeProcessor(llm_t),
     }
 
     sinks_map = cfg.get("sinks") or {}

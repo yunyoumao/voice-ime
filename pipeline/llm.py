@@ -19,9 +19,9 @@ import urllib.request
 
 
 class LLMClient:
-    def __init__(self, cfg: dict) -> None:
+    def __init__(self, cfg: dict, provider_override: str | None = None) -> None:
         llm = (cfg.get("pipeline") or {}).get("llm") or {}
-        self.provider = llm.get("provider", "glm-cli")
+        self.provider = provider_override or llm.get("provider", "glm-cli")   # 可按模式覆盖(如翻译走 GLM)
         self.timeout = int(llm.get("timeout", 30))
         # 并发闸：智谱按 key 限并发，多请求齐发会 429→退避重试→卡 5-8s 甚至失败。
         # 默认串行(1)从源头避免；连说多句排队处理(每句~1.2s)。配额高可在 config 调大。
