@@ -359,6 +359,11 @@ async def run() -> None:
             audio.stop()
         except Exception:
             pass
+        try:                              # 刷新 PortAudio 设备表 → 认到热插拔的新设备(如刚插的耳机)，否则切过去找不到
+            import sounddevice as _sd
+            _sd._terminate(); _sd._initialize()
+        except Exception:
+            pass
         try:
             audio = AudioRecorder({"audio": new_audio}, on_frame)
             audio.start()
