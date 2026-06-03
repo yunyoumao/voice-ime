@@ -20,10 +20,16 @@ class OutputController:
         self.restore = bool(o.get("restore_clipboard", True))
         self._kb = Controller()
         self._is_mac = sys.platform == "darwin"
+        self._last_text = None          # 上屏去重：防 pynput 偶发把一次触发发成两下导致重复粘贴
+        self._last_t = 0.0
 
     def put(self, text: str) -> None:
         if not text:
             return
+        now = time.monotonic()
+        if text == self._last_text and (now - self._last_t) < 1.0:
+            return                      # 同一段文字 1s 内只上屏一次（挡偶发重复，正常说话间隔远大于此）
+        self._last_text, self._last_t = text, now
         if self.mode == "type":
             self._kb.type(text)
             return
