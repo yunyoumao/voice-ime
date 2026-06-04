@@ -90,7 +90,7 @@ pipeline:
     timeout: 30              # 单次超时(秒)：超时即失败回退原文，不傻等。单次润色约1.2s，30s 足够长文翻译/总结
     max_concurrency: 1       # LLM 并发上限：智谱按 key 限并发，齐发会 429→串行(1)最稳；连说多句排队处理。配额高可调 2~3
     glm_cli:
-      python: "python3"   # 系统 Python（不是本项目 .venv）
+      python: "python3"   # 系统 Python（不是本项目 .venv）；填能跑 glm-provider 的解释器路径
       script: "~/.claude/skills/glm-provider/ask_glm.py"
       model: "glm-4.7"
     openai:                  # provider=openai 时用（直连智谱需账户有余额；也可填其他厂商）

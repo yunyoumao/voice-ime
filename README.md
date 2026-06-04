@@ -1,6 +1,12 @@
-# 语音输入法（中英日无缝混合 · 低延迟 · 引擎可插拔）
+# 语音输入法 · Voice Input（中英日无缝混合 · 低延迟 · 引擎可插拔）
 
-一个自用优先、架构可扩展的语音输入法。核心目标：**中文 / 英文 / 日语三语无缝混合、低延迟、便宜**。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)
+![Python](https://img.shields.io/badge/python-3.12-blue.svg)
+
+> A low-latency, pluggable-engine voice input method for seamless Chinese / English / Japanese mixed dictation. Desktop-first (macOS / Windows), Android to follow.
+
+从个人自用起步、架构面向可扩展，欢迎试用与反馈。核心目标：**中文 / 英文 / 日语三语无缝混合、低延迟、便宜**。
 桌面端（macOS / Windows）先行，安卓端随后。
 
 ## 特性
@@ -75,3 +81,11 @@ python -m desktop.main
 - [ ] 阶段 3：体验层（实时浮窗 + 系统托盘）
 - [ ] 阶段 4：安卓 IME 输入法
 - [ ] 阶段 5（未来）：iOS 自定义键盘、打包分发、产品化
+
+## 贡献
+
+个人维护中，欢迎通过 issue 反馈 bug、提需求，也欢迎 PR。改动较大前建议先开 issue 对齐方向，避免白做。
+
+## 许可
+
+本项目以 [MIT 许可证](LICENSE) 开源 © 2026 LI PEIZE。
